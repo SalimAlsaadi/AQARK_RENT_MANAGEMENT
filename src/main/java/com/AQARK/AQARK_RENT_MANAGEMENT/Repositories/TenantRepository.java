@@ -1,0 +1,7 @@
+package com.AQARK.AQARK_RENT_MANAGEMENT.Repositories;
+
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Tenant;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface TenantRepository extends JpaRepository<Tenant, Long> {
+}
