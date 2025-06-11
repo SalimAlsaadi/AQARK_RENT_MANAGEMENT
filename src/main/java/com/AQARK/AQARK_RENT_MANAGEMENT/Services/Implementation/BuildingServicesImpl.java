@@ -14,6 +14,7 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.BuildingServicesInterface;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -31,6 +32,27 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
     private final ImageService imageService;
     private final LandlordRepository landlordRepository;
 
+    @Value("${folder.building}")
+    private String folder_building;
+
+    @Value("${folder.rooms.building}")
+    private String folder_rooms_building;
+
+    @Value("${folder.rooms.building.flat}")
+    private String folder_rooms_building_flat;
+
+    @Value("${folder.rooms.building.flat.room}")
+    private String folder_rooms_building_flat_room;
+
+    @Value("${folder.rooms}")
+    private String folder_rooms;
+
+    @Value("${folder.flat}")
+    private String folder_flat;
+
+    @Value("${building.link.src}")
+    private String folder_building_link;
+
     @Autowired
     public BuildingServicesImpl(BuildingRepository buildingRepository, FlatsRepository flatsRepository, RoomRepository repository, ImageService imageService, LandlordRepository landlordRepository) {
         this.buildingRepository = buildingRepository;
@@ -47,7 +69,7 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
         EntityBuildings savedBuilding = buildingRepository.save(building);
 
         if (pictures != null && !pictures.isEmpty()) {
-            List<String> picturePaths = imageService.saveImages(pictures, "buildings", savedBuilding.getId().toString());
+            List<String> picturePaths = imageService.saveImages(pictures, folder_building, savedBuilding.getId().toString());
             savedBuilding.setPicturePaths(picturePaths);
             savedBuilding = buildingRepository.save(savedBuilding); // update with pictures
         }
@@ -93,7 +115,7 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
 
 //        // Update pictures
         List<String> updatedPictures = imageService.updateImages(
-                existing.getPicturePaths(), picturesToDelete, newPictures, "buildings", existing.getId().toString()
+                existing.getPicturePaths(), picturesToDelete, newPictures, folder_building, existing.getId().toString()
         );
         existing.setPicturePaths(updatedPictures);
 
@@ -114,27 +136,27 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
             // 1. Delete room folders inside this flat
             List<EntityRooms> rooms = flat.getRooms(); // ensure getRooms() is correctly mapped
             for (EntityRooms room : rooms) {
-                String roomFolder = "building_" + building.getId() + "/flat_" + flat.getId() + "/room_" + room.getId();
+                String roomFolder = folder_rooms_building + building.getId() + folder_rooms_building_flat + flat.getId() + folder_rooms_building_flat_room + room.getId();
                 roomRepository.deleteById(room.getId());
-                imageService.deleteAllImages("room", roomFolder);
+                imageService.deleteAllImages(folder_rooms, roomFolder);
             }
 
             // 2. Delete flat-level folder inside room
-            String flatRoomFolder = "building_" + building.getId() + "/flat_" + flat.getId();
-            imageService.deleteFolderIfEmpty("room", flatRoomFolder);
+            String flatRoomFolder = folder_rooms_building + building.getId() + folder_rooms_building_flat + flat.getId();
+            imageService.deleteFolderIfEmpty(folder_rooms, flatRoomFolder);
 
             // 3. Delete this flat's folder under flat/
             String flatFolder = building.getId() + "_" + flat.getId();
-            imageService.deleteAllImages("flat", flatFolder);
+            imageService.deleteAllImages(folder_flat, flatFolder);
             flatsRepository.delete(flat);
         }
 
         // 4. Delete building-level room folder
-        String buildingRoomFolder = "building_" + building.getId();
-        imageService.deleteFolderIfEmpty("room", buildingRoomFolder);
+        String buildingRoomFolder = folder_rooms_building + building.getId();
+        imageService.deleteFolderIfEmpty(folder_rooms, buildingRoomFolder);
 
         // 5. Delete building image folder
-        imageService.deleteAllImages("buildings", id.toString());
+        imageService.deleteAllImages(folder_building, id.toString());
 
         // 6. Delete building from database
         buildingRepository.delete(building);
@@ -159,10 +181,8 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
         building.setLongitude(dto.getLongitude());
 
         // You must fetch the landlord from the DB using mobile number
-        Landlord landlord = landlordRepository.findByPhoneNumber(dto.getLandlordMobileNumber());
-        if (landlord == null) {
-            throw new IllegalArgumentException("No landlord found with mobile number: " + dto.getLandlordMobileNumber());
-        }
+        Landlord landlord = landlordRepository.findById(dto.getLandlord()).orElseThrow(()->new RuntimeException("no landlord found with ID: "+dto.getLandlord()));
+
         building.setLandlord(landlord);
 
         return building;
@@ -189,7 +209,7 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
                 .map(path -> {
                     Path p = Paths.get(path);
                     String fileName = p.getFileName().toString();
-                    return "http://localhost:8008/api/images/buildings/" + building.getId() + "/" + fileName;
+                    return folder_building_link + building.getId() + "/" + fileName;
                 })
                 .toList();
         dto.setPictureUrls(imageUrls);

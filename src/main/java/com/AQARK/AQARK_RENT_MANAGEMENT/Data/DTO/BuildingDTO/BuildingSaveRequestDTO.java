@@ -1,9 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO;
 
 import lombok.*;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
 
 @Getter
 @Setter
@@ -23,5 +20,5 @@ public class BuildingSaveRequestDTO {
     private String description;
     private Double latitude;
     private Double longitude;
-    private String landlordMobileNumber;
+    private Long landlord;
 }
