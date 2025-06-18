@@ -1,0 +1,9 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="AQARK.AQARK_RENT_MANAGEMENT" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="com.AQARK.AQARK_RENT_MANAGEMENT.AqarkRentManagementApplication" />
+    <module name="AQARK_RENT_MANAGEMENT" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
