@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.FolderProperties;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityFlats;
@@ -11,7 +12,9 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.ImageService;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -27,16 +30,21 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     private final FlatsRepository flatsRepository;
     private final HomeRepository homeRepository;
     private final ImageService imageService;
+    private final FolderProperties folder;
+
+    @Value("${room.link.src}")
+    private String room_link;
 
     @Autowired
     public RoomsServicesImpl(RoomRepository roomRepository,
-                           FlatsRepository flatsRepository,
-                           HomeRepository homeRepository,
-                           ImageService imageService) {
+                             FlatsRepository flatsRepository,
+                             HomeRepository homeRepository,
+                             ImageService imageService, FolderProperties folderProperties) {
         this.roomRepository = roomRepository;
         this.flatsRepository = flatsRepository;
         this.homeRepository = homeRepository;
         this.imageService = imageService;
+        this.folder = folderProperties;
     }
 
     @Override
@@ -67,7 +75,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         room = roomRepository.save(room);
 
         if (images != null && !images.isEmpty()) {
-            String baseFolder = "room";
+            String baseFolder = folder.getRooms();
             String subFolder;
 
             if (room.getFlat() != null) {
@@ -75,13 +83,16 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
                 Long flatId = room.getFlat().getId();
                 Long roomId = room.getId();
 
-                subFolder = "building_" + buildingId + "/flat_" + flatId + "/room_" + roomId;
+                     subFolder = folder.getBuilding() + "_" + buildingId + "/" +
+                                 folder.getFlat() + "_" + flatId + "/" +
+                                 folder.getRooms() + "_" + roomId;
 
             } else if (room.getHome() != null) {
                 Long homeId = room.getHome().getId();
                 Long roomId = room.getId();
 
-                subFolder = "home_" + homeId + "/room_" + roomId;
+                subFolder = folder.getHome() + "_" + homeId + "/" +
+                            folder.getRooms() + "_" + roomId;
 
             } else {
                 throw new IllegalStateException("Room must belong to either a flat or a home.");
@@ -114,7 +125,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
                 .map(path -> {
                     Path p = Paths.get(path);
                     String fileName = p.getFileName().toString();
-                    return "http://localhost:8008/api/images/room/" + fileName;
+                    return room_link + fileName;
                 }).toList();
 
         dto.setPictureUrls(imageUrls);
@@ -139,7 +150,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         room.setTenantType(dto.getTenantType());
 
         List<String> updated = imageService.updateImages(
-                room.getPicturePaths(), imagesToDelete, newImages, "room",
+                room.getPicturePaths(), imagesToDelete, newImages, folder.getRooms(),
                 room.getFlat() != null ? "flat_" + room.getFlat().getId() : "home_" + room.getHome().getId()
         );
         room.setPicturePaths(updated);
@@ -148,30 +159,38 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         return "Room updated successfully.";
     }
 
+
     @Override
     public String deleteRoom(Long roomId) {
         EntityRooms room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new RuntimeException("Room not found"));
 
-        String folderPath;      // Full path: e.g., flat_5/room_12
-        String baseFolder;      // Parent folder: flat_5 or home_3
-        Long parentId;          // ID of flat or home
+        String folderPath;
+        String baseFolderPath;
+        Long parentId;
 
         // Build folder structure
         if (room.getFlat() != null) {
+            Long buildingId = room.getFlat().getBuilding().getId();
             parentId = room.getFlat().getId();
-            baseFolder = "flat_" + parentId;
-            folderPath = baseFolder + "/room_" + room.getId();
+
+            // e.g., building_3/flat_2/room_10
+            baseFolderPath = folder.getBuilding() + "_" + buildingId + "/" + folder.getFlat() + "_" + parentId;
+            folderPath = baseFolderPath + "/" + folder.getRooms() + "_" + room.getId();
+
         } else if (room.getHome() != null) {
             parentId = room.getHome().getId();
-            baseFolder = "home_" + parentId;
-            folderPath = baseFolder + "/room_" + room.getId();
+
+            // e.g., home_5/room_12
+            baseFolderPath = folder.getHome() + "_" + parentId;
+            folderPath = baseFolderPath + "/" + folder.getRooms() + "_" + room.getId();
+
         } else {
             throw new IllegalStateException("Room must belong to either a flat or a home.");
         }
 
         // Step 1: Delete the room's image folder
-        imageService.deleteAllImages("room", folderPath);
+        imageService.deleteAllImages(folder.getRooms(), folderPath);
 
         // Step 2: Delete the room from the database
         roomRepository.delete(room);
@@ -183,12 +202,11 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
         // Step 4: If no rooms left, delete the parent folder
         if (!hasRemainingRooms) {
-            imageService.deleteAllImages("room", baseFolder);
+            imageService.deleteFolderIfEmpty(folder.getRooms(), baseFolderPath);
         }
 
         return "Room with ID " + roomId + " has been deleted.";
     }
-
 
 
     private RoomDetailsDTO convertToDTO(EntityRooms room) {
@@ -204,7 +222,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
                 .map(path -> {
                     Path p = Paths.get(path);
                     String fileName = p.getFileName().toString();
-                    return "http://localhost:8008/api/images/room/" + fileName;
+                    return room_link + fileName;
                 }).toList();
 
         dto.setPictureUrls(imageUrls);

@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.FolderProperties;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.ImageService;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatsForShowListDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatSaveRequestDTO;
@@ -14,6 +15,7 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.LandlordRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.FlatsServicesInterface;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
@@ -29,17 +31,24 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     private final BuildingRepository buildingRepository;
     private final ImageService imageService;
     private final RoomRepository roomRepository;
+    private final FolderProperties folder;
+
+    @Value("${flat.link.src}")
+    private String flat_link;
+
 
     @Autowired
     public FlatsServicesImpl(FlatsRepository flatsRepository,
                              LandlordRepository landlordRepository,
                              BuildingRepository buildingRepository,
-                             ImageService imageService, RoomRepository roomRepository) {
+                             ImageService imageService, RoomRepository roomRepository, FolderProperties folderProperties) {
+
         this.flatsRepository = flatsRepository;
         this.landlordRepository = landlordRepository;
         this.buildingRepository = buildingRepository;
         this.imageService = imageService;
         this.roomRepository = roomRepository;
+        this.folder = folderProperties;
     }
 
     @Override
@@ -57,7 +66,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
         if (pictures != null && !pictures.isEmpty()) {
             String folderName = findBuilding.getId() + "_" + flat.getId();
-            List<String> picturePaths = imageService.saveImages(pictures, "flat", folderName);
+            List<String> picturePaths = imageService.saveImages(pictures, folder.getFlat(), folderName);
             flat.setPicturePaths(picturePaths);
             flat = flatsRepository.save(flat);
         }
@@ -105,7 +114,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
                 flat.getPicturePaths(),
                 imagesToDelete,
                 newImages,
-                "flat",
+                folder.getFlat(),
                 flat.getBuilding().getId().toString()
         );
         flat.setPicturePaths(updatedPaths);
@@ -115,24 +124,38 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     }
 
 
-
     @Override
     public void deleteFlat(Long flatId) {
         EntityFlats flat = flatsRepository.findById(flatId)
                 .orElseThrow(() -> new IllegalArgumentException("Flat not found"));
 
-        // 1. Delete room folders inside this flat
-        List<EntityRooms> rooms = flat.getRooms(); // ensure getRooms() is correctly mapped
+        Long buildingId = flat.getBuilding().getId();
+
+        // 1. Delete all rooms inside this flat
+        List<EntityRooms> rooms = flat.getRooms();
         for (EntityRooms room : rooms) {
-            String roomFolder = "building_" + flat.getBuilding().getId() + "/flat_" + flat.getId() + "/room_" + room.getId();
+            String roomFolder = folder.getBuilding() + "_" + buildingId + "/" +
+                    folder.getFlat() + "_" + flatId + "/" +
+                    folder.getRooms() + "_" + room.getId();
+
             roomRepository.deleteById(room.getId());
-            imageService.deleteAllImages("room", roomFolder);
+            imageService.deleteAllImages(folder.getRooms(), roomFolder);
         }
 
+        // 2. Delete flat-level folder inside 'room/' if empty (room/building_3/flat_2)
+        String flatRoomFolder = folder.getBuilding() + "_" + buildingId + "/" +
+                folder.getFlat() + "_" + flatId;
 
-        imageService.deleteAllImages("flat", flat.getBuilding().getId()+"_"+flatId.toString());
+        imageService.deleteFolderIfEmpty(folder.getRooms(), flatRoomFolder);
+
+        // 3. Delete flat folder under 'flat/' (flat/3_2)
+        String flatFolder = buildingId + "_" + flatId;
+        imageService.deleteAllImages(folder.getFlat(), flatFolder);
+
+        // 4. Delete the flat from database
         flatsRepository.delete(flat);
     }
+
 
     @Override
     public List<FlatsForShowListDTO> getAllHostels() {
@@ -211,7 +234,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
                 .map(path -> {
                     Path p = Paths.get(path);
                     String fileName = p.getFileName().toString();
-                    return "http://localhost:8008/api/images/flat/" + folder + "/" + fileName;
+                    return flat_link + folder + "/" + fileName;
                 })
                 .toList();
 
