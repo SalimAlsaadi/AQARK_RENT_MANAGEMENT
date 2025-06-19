@@ -111,42 +111,51 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
 
 
     @Override
-    @Transactional
-    public void deleteBuilding(Long id) {
-        EntityBuildings building = buildingRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Building not found with id: " + id));
+    public void deleteBuilding(Long buildingId) {
+        EntityBuildings building = buildingRepository.findById(buildingId)
+                .orElseThrow(() -> new RuntimeException("Building not found with id: " + buildingId));
 
         List<EntityFlats> flats = building.getFlats();
         for (EntityFlats flat : flats) {
+            Long flatId = flat.getId();
 
-            // 1. Delete room folders inside this flat
-            List<EntityRooms> rooms = flat.getRooms(); // ensure getRooms() is correctly mapped
+            List<EntityRooms> rooms = flat.getRooms();
             for (EntityRooms room : rooms) {
-                String roomFolder = folderProperties.getBuilding() + building.getId() + folderProperties.getFlat() + flat.getId() + folderProperties.getRooms() + room.getId();
-                roomRepository.deleteById(room.getId());
+                Long roomId = room.getId();
+
+                // Delete room folder: room/building_3/flat_2/room_10
+                String roomFolder = folderProperties.getBuilding() + "_" + buildingId + "/" +
+                        folderProperties.getFlat() + "_" + flatId + "/" +
+                        folderProperties.getRooms() + "_" + roomId;
+
+                roomRepository.deleteById(roomId);
                 imageService.deleteAllImages(folderProperties.getRooms(), roomFolder);
             }
 
-            // 2. Delete flat-level folder inside room
-            String flatRoomFolder = folderProperties.getBuilding()+ building.getId() + folderProperties.getFlat() + flat.getId();
+            // Delete flat folder under 'room/': room/building_3/flat_2
+            String flatRoomFolder = folderProperties.getBuilding() + "_" + buildingId + "/" +
+                    folderProperties.getFlat() + "_" + flatId;
             imageService.deleteFolderIfEmpty(folderProperties.getRooms(), flatRoomFolder);
 
-            // 3. Delete this flat's folder under flat/
-            String flatFolder = building.getId() + "_" + flat.getId();
+            // Delete flat folder under 'flat/': flat/3_2
+            String flatFolder = buildingId + "_" + flatId;
             imageService.deleteAllImages(folderProperties.getFlat(), flatFolder);
+
+            // Delete flat from DB
             flatsRepository.delete(flat);
         }
 
-        // 4. Delete building-level room folder
-        String buildingRoomFolder = folderProperties.getBuilding() + building.getId();
+        // Delete building folder under 'room/' if empty: room/building_3
+        String buildingRoomFolder = folderProperties.getBuilding() + "_" + buildingId;
         imageService.deleteFolderIfEmpty(folderProperties.getRooms(), buildingRoomFolder);
 
-        // 5. Delete building image folder
-        imageService.deleteAllImages(folderProperties.getBuildings(), id.toString());
+        // Delete building image folder: buildings/3
+        imageService.deleteAllImages(folderProperties.getBuildings(), buildingId.toString());
 
-        // 6. Delete building from database
+        // Delete building from DB
         buildingRepository.delete(building);
     }
+
 
 
     private EntityBuildings convertToEntity(BuildingSaveRequestDTO dto) {
