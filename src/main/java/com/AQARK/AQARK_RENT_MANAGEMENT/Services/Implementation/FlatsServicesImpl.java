@@ -65,7 +65,8 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         flat = flatsRepository.save(flat);
 
         if (pictures != null && !pictures.isEmpty()) {
-            String folderName = findBuilding.getId() + "_" + flat.getId();
+            String folderName = folder.getBuilding() + "_" + findBuilding.getId()
+                               + "/" + folder.getFlat() + "_" + flat.getId();
             List<String> picturePaths = imageService.saveImages(pictures, folder.getFlat(), folderName);
             flat.setPicturePaths(picturePaths);
             flat = flatsRepository.save(flat);
@@ -131,7 +132,6 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
         Long buildingId = flat.getBuilding().getId();
 
-        // 1. Delete all rooms inside this flat
         List<EntityRooms> rooms = flat.getRooms();
         for (EntityRooms room : rooms) {
             String roomFolder = folder.getBuilding() + "_" + buildingId + "/" +
@@ -142,17 +142,16 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
             imageService.deleteAllImages(folder.getRooms(), roomFolder);
         }
 
-        // 2. Delete flat-level folder inside 'room/' if empty (room/building_3/flat_2)
         String flatRoomFolder = folder.getBuilding() + "_" + buildingId + "/" +
                 folder.getFlat() + "_" + flatId;
 
         imageService.deleteFolderIfEmpty(folder.getRooms(), flatRoomFolder);
 
-        // 3. Delete flat folder under 'flat/' (flat/3_2)
-        String flatFolder = buildingId + "_" + flatId;
+        String flatFolder = folder.getBuilding() + "_" + buildingId
+                + "/" + folder.getFlat() + "_" + flat.getId();
+
         imageService.deleteAllImages(folder.getFlat(), flatFolder);
 
-        // 4. Delete the flat from database
         flatsRepository.delete(flat);
     }
 

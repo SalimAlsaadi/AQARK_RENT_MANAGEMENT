@@ -55,7 +55,7 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
         EntityBuildings savedBuilding = buildingRepository.save(building);
 
         if (pictures != null && !pictures.isEmpty()) {
-            List<String> picturePaths = imageService.saveImages(pictures, folderProperties.getBuilding(), savedBuilding.getId().toString());
+            List<String> picturePaths = imageService.saveImages(pictures, folderProperties.getBuildings(), folderProperties.getBuilding()+ "_" +savedBuilding.getId().toString());
             savedBuilding.setPicturePaths(picturePaths);
             savedBuilding = buildingRepository.save(savedBuilding); // update with pictures
         }
@@ -138,7 +138,8 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
             imageService.deleteFolderIfEmpty(folderProperties.getRooms(), flatRoomFolder);
 
             // Delete flat folder under 'flat/': flat/3_2
-            String flatFolder = buildingId + "_" + flatId;
+            String flatFolder = folderProperties.getBuilding() + "_" + buildingId
+                                + "/" + folderProperties.getFlat() + "_" + flatId;
             imageService.deleteAllImages(folderProperties.getFlat(), flatFolder);
 
             // Delete flat from DB
@@ -147,10 +148,14 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
 
         // Delete building folder under 'room/' if empty: room/building_3
         String buildingRoomFolder = folderProperties.getBuilding() + "_" + buildingId;
-        imageService.deleteFolderIfEmpty(folderProperties.getRooms(), buildingRoomFolder);
+        imageService.deleteFolderIfEmpty(folderProperties.getFlat(), buildingRoomFolder);
+
+        // Delete building folder under 'room/' if empty: room/building_3
+        String buildingFlatFolder = folderProperties.getBuilding() + "_" + buildingId;
+        imageService.deleteFolderIfEmpty(folderProperties.getRooms(), buildingFlatFolder);
 
         // Delete building image folder: buildings/3
-        imageService.deleteAllImages(folderProperties.getBuildings(), buildingId.toString());
+        imageService.deleteAllImages(folderProperties.getBuildings(), folderProperties.getBuilding() + "_" + buildingId);
 
         // Delete building from DB
         buildingRepository.delete(building);
