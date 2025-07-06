@@ -1,8 +1,11 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.Landlord.LandlordSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Landlord;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation.LandlordServicesImpl;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.LandlordServicesInterface;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -12,15 +15,17 @@ import java.util.List;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/api/landlord")
+@RequestMapping("/api/landlords")
 public class LandlordsController {
 
-    @Autowired
-    private final LandlordServicesInterface landlordServices;
 
+    private LandlordServicesInterface landlordServices;
+
+    @Autowired
     public LandlordsController(LandlordServicesImpl landlordServices){
         this.landlordServices=landlordServices;
     }
+    public LandlordsController(){}
 
     @GetMapping
     public List<Landlord> getAllLandlords() {
@@ -33,9 +38,10 @@ public class LandlordsController {
         return landlord.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @PostMapping
-    public ResponseEntity<Landlord> createLandlord(@Validated @RequestBody Landlord landlord) {
-        return ResponseEntity.ok(landlordServices.createLandlord(landlord));
+    @PostMapping("/register")
+    public ResponseEntity<Long> registerLandlord(@Valid @RequestBody LandlordSaveRequestDTO dto) {
+        Long id = landlordServices.createLandlord(dto);
+        return ResponseEntity.ok(id);
     }
 
     @PutMapping("/{id}")

@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.Landlord.LandlordSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Landlord;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.LandlordRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.LandlordServicesInterface;
@@ -27,8 +28,20 @@ public class LandlordServicesImpl implements LandlordServicesInterface {
         return landlordRepository.findById(id);
     }
 
-    public Landlord createLandlord(Landlord landlord) {
-        return landlordRepository.save(landlord);
+    public Long createLandlord(LandlordSaveRequestDTO dto) {
+        Landlord landlord = new Landlord();
+
+        landlord.setFirstName(dto.getFirstName());
+        landlord.setLastName(dto.getLastName());
+        landlord.setEmail(dto.getEmail());
+        landlord.setPhoneNumber(dto.getPhoneNumber());
+        landlord.setDateOfBirth(dto.getDateOfBirth());
+        landlord.setAddress(dto.getAddress());
+        landlord.setNationalId(dto.getNationalId());
+        landlord.setIsActive(dto.getIsActive());
+
+        Landlord saved = landlordRepository.save(landlord);
+        return saved.getId();
     }
 
     public Landlord updateLandlord(Long id, Landlord updatedLandlord) {

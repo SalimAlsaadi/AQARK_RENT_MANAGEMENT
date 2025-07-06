@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.Landlord.LandlordSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Landlord;
 
 import java.util.List;
@@ -11,7 +12,7 @@ public interface LandlordServicesInterface {
 
     Optional<Landlord> getLandlordById(Long id);
 
-    Landlord createLandlord(Landlord landlord);
+    Long createLandlord(LandlordSaveRequestDTO dto);
 
     Landlord updateLandlord(Long id, Landlord updatedLandlord);
 
