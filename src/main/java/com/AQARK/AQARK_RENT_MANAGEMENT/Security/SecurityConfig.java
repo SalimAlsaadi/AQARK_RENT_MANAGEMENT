@@ -2,6 +2,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -17,7 +18,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/landlords/register").permitAll()
                         .anyRequest().authenticated()
                 )
-                .formLogin(AbstractHttpConfigurer::disable)
+                .formLogin(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable);
 
         return http.build();
