@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.util.Date;
 
 @Data
@@ -27,7 +28,7 @@ public class LandlordSaveRequestDTO {
     private String phoneNumber;
 
     @PastOrPresent
-    private Date dateOfBirth;
+    private LocalDate dateOfBirth;
 
     private String address;
 
@@ -35,4 +36,6 @@ public class LandlordSaveRequestDTO {
     private String nationalId;
 
     private Boolean isActive = true;
+
+    private Integer ref_type;
 }

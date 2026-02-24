@@ -1,7 +1,7 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityBuildings;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Landlord;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityUser;
 import lombok.*;
 
 @AllArgsConstructor
@@ -23,7 +23,7 @@ public class FlatSaveRequestDTO {
     private String rentTimeType;
     private Float price;
     private String mobileNumber;
-    private Landlord landlordId;
+    private EntityUser entityUserId;
     private EntityBuildings buildingId;
     private Double latitude;
     private Double longitude;

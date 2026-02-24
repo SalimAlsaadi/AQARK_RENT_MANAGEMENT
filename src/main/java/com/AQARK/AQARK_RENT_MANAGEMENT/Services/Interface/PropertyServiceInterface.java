@@ -1,17 +1,17 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Property;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityProperty;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface PropertyServiceInterface {
 
-    Property saveProperty(Property property);
+    EntityProperty saveProperty(EntityProperty entityProperty);
 
-    List<Property> getAllProperties();
+    List<EntityProperty> getAllProperties();
 
-    Optional<Property> getPropertyById(Long id);
+    Optional<EntityProperty> getPropertyById(Long id);
 
     void deleteProperty(Long id);
 }

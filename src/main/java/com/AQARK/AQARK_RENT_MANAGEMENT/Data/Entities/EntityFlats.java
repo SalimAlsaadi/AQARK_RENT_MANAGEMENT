@@ -25,7 +25,7 @@ public class EntityFlats {
 
     @ManyToOne
     @JoinColumn(name = "landlord_id", nullable = false)
-    private Landlord landlord;
+    private EntityUser landlord;
 
     @OneToMany(mappedBy = "flat", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<EntityRooms> rooms;

@@ -1,26 +1,28 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities;
 
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-@Entity
-@Setter
+@Entity(name = "property")
 @Getter
+@Setter
 @AllArgsConstructor
 @NoArgsConstructor
-public class MaintenanceRequest {
+public class EntityProperty {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    private String description;
-    private String status; // "PENDING", "IN_PROGRESS", "COMPLETED"
+    private String name;
+    private String location;
+    private double rent;
 
     @ManyToOne
-    @JoinColumn(name = "property_id")
-    private EntityProperty property_id;
-
+    @JoinColumn(name = "landlord_id")
+    private EntityUser owner;
 
 }
+

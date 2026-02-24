@@ -6,7 +6,7 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.UpdateHostelPicturesDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityHomes;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.HomeRepository;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.LandlordRepository;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.HomeServiceInterface;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,13 +24,13 @@ import java.util.stream.Collectors;
 public class HomeServiceImpl implements HomeServiceInterface {
 
     private final HomeRepository homeRepository;
-    private final LandlordRepository landlordRepository;
+    private final UserRepository userRepository;
     private final ImageService imageService;
 
     @Autowired
-    public HomeServiceImpl(HomeRepository homeRepository, LandlordRepository landlordRepository, ImageService imageService) {
+    public HomeServiceImpl(HomeRepository homeRepository, UserRepository userRepository, ImageService imageService) {
         this.homeRepository = homeRepository;
-        this.landlordRepository = landlordRepository;
+        this.userRepository = userRepository;
         this.imageService = imageService;
     }
 
@@ -252,7 +252,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
         entity.setRentType(home.getRentType());
         entity.setPrice(home.getPrice());
         if (home.getLandlordMobileNumber() != null) {
-            entity.setLandlord(landlordRepository.findByPhoneNumber(home.getLandlordMobileNumber()));
+            entity.setLandlord(userRepository.findByPhoneNumber(home.getLandlordMobileNumber()));
         }
         return entity;
     }

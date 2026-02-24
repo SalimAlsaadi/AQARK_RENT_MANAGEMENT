@@ -1,20 +1,22 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Date;
 
 @Entity
-@Table(name = "landlords")
+@Table(name = "users", schema = "app_root")
 @AllArgsConstructor
 @NoArgsConstructor
+@Builder
 @Getter
 @Setter
-@ToString
-public class Landlord {
+public class EntityUser {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,7 +34,7 @@ public class Landlord {
 
     @NotBlank
     @Email
-    @Column(name = "email", unique = true, nullable = true)
+    @Column(name = "email", unique = true, nullable = false)
     private String email;
 
     @NotBlank
@@ -40,39 +42,49 @@ public class Landlord {
     @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
 
-    @PastOrPresent
-    @Temporal(TemporalType.DATE)
     @Column(name = "date_of_birth")
-    private Date dateOfBirth;
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    private LocalDate dateOfBirth;
 
-    @Column(name = "address", length = 255, nullable = true)
+    @Column(name = "address", length = 255)
     private String address;
 
     @Column(name = "national_id", unique = true, nullable = false)
     private String nationalId;
 
-    @OneToMany(mappedBy = "landlord", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Property> properties;
+    /* =========================
+        SAS LINK FIELD
+       ========================= */
+    @Column(name = "sas_user_id", unique = true)
+    private Long sasUserId;
 
     @Column(name = "is_active", nullable = false)
-    private Boolean isActive = true;
+    private Boolean isActive;
 
-    @Temporal(TemporalType.TIMESTAMP)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ref_type_id", nullable = false)
+    private RefType refType;
+
+    @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<EntityProperty> properties;
+
+    /* =========================
+       AUDIT FIELDS
+       ========================= */
+
     @Column(name = "created_at", nullable = false, updatable = false)
-    private Date createdAt;
+    private LocalDateTime createdAt;
 
-    @Temporal(TemporalType.TIMESTAMP)
     @Column(name = "updated_at")
-    private Date updatedAt;
+    private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
-        this.createdAt = new Date();
+        this.createdAt = LocalDateTime.now();
     }
 
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = new Date();
+        this.updatedAt = LocalDateTime.now();
     }
-
 }

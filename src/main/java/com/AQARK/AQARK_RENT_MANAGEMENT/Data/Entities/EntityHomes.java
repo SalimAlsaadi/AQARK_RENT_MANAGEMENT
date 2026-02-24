@@ -77,5 +77,5 @@ public class EntityHomes {
 
     @ManyToOne
     @JoinColumn(name = "landlord_id", nullable = false)
-    private Landlord landlord;
+    private EntityUser landlord;
 }

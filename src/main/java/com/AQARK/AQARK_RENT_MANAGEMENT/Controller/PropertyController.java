@@ -1,6 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Property;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityProperty;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation.PropertyServiceImpl;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.PropertyServiceInterface;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,17 +21,17 @@ public class PropertyController {
     }
 
     @PostMapping
-    public Property addProperty(@RequestBody Property property) {
-        return propertyService.saveProperty(property);
+    public EntityProperty addProperty(@RequestBody EntityProperty entityProperty) {
+        return propertyService.saveProperty(entityProperty);
     }
 
     @GetMapping
-    public List<Property> getAllProperties() {
+    public List<EntityProperty> getAllProperties() {
         return propertyService.getAllProperties();
     }
 
     @GetMapping("/{id}")
-    public Optional<Property> getPropertyById(@PathVariable Long id) {
+    public Optional<EntityProperty> getPropertyById(@PathVariable Long id) {
         return propertyService.getPropertyById(id);
     }
 

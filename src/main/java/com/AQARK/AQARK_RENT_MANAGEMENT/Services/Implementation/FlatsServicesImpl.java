@@ -8,10 +8,10 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.HostelSearchRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityBuildings;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityFlats;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityRooms;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Landlord;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityUser;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.BuildingRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.FlatsRepository;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.LandlordRepository;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.FlatsServicesInterface;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,7 +27,7 @@ import java.util.List;
 public class FlatsServicesImpl implements FlatsServicesInterface {
 
     private final FlatsRepository flatsRepository;
-    private final LandlordRepository landlordRepository;
+    private final UserRepository userRepository;
     private final BuildingRepository buildingRepository;
     private final ImageService imageService;
     private final RoomRepository roomRepository;
@@ -39,12 +39,12 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
     @Autowired
     public FlatsServicesImpl(FlatsRepository flatsRepository,
-                             LandlordRepository landlordRepository,
+                             UserRepository userRepository,
                              BuildingRepository buildingRepository,
                              ImageService imageService, RoomRepository roomRepository, FolderProperties folderProperties) {
 
         this.flatsRepository = flatsRepository;
-        this.landlordRepository = landlordRepository;
+        this.userRepository = userRepository;
         this.buildingRepository = buildingRepository;
         this.imageService = imageService;
         this.roomRepository = roomRepository;
@@ -54,13 +54,13 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     @Override
     public String saveFlats(FlatSaveRequestDTO flatDTO, List<MultipartFile> pictures) throws IOException {
 
-        Landlord findLandlord = landlordRepository.findById(flatDTO.getLandlordId().getId())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid landlord ID: " + flatDTO.getLandlordId().getId()));
+        EntityUser findEntityUser = userRepository.findById(flatDTO.getEntityUserId().getId())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid landlord ID: " + flatDTO.getEntityUserId().getId()));
 
         EntityBuildings findBuilding = buildingRepository.findById(flatDTO.getBuildingId().getId())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid building ID: " + flatDTO.getBuildingId().getId()));
 
-        EntityFlats flat = convertToEntity(flatDTO, findBuilding, findLandlord);
+        EntityFlats flat = convertToEntity(flatDTO, findBuilding, findEntityUser);
 
         flat = flatsRepository.save(flat);
 
@@ -98,10 +98,10 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         flat.setLongitude(dto.getLongitude());
 
         // Optional: update landlord and building if needed
-        if (dto.getLandlordId() != null) {
-            Landlord landlord = landlordRepository.findById(dto.getLandlordId().getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Landlord not found: " + dto.getLandlordId().getId()));
-            flat.setLandlord(landlord);
+        if (dto.getEntityUserId() != null) {
+            EntityUser entityUser = userRepository.findById(dto.getEntityUserId().getId())
+                    .orElseThrow(() -> new IllegalArgumentException("Landlord not found: " + dto.getEntityUserId().getId()));
+            flat.setLandlord(entityUser);
         }
 
         if (dto.getBuildingId() != null) {
@@ -242,7 +242,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     }
 
 
-    public EntityFlats convertToEntity(FlatSaveRequestDTO dto, EntityBuildings building, Landlord landlord) {
+    public EntityFlats convertToEntity(FlatSaveRequestDTO dto, EntityBuildings building, EntityUser entityUser) {
         EntityFlats flat = new EntityFlats();
 
         flat.setNumberOfRooms(dto.getNumberOfRooms());
@@ -261,7 +261,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         flat.setLandlordMobileNumber(dto.getMobileNumber());
 
         // ✅ Use attached (managed) references
-        flat.setLandlord(landlord);
+        flat.setLandlord(entityUser);
         flat.setBuilding(building);
 
         return flat;

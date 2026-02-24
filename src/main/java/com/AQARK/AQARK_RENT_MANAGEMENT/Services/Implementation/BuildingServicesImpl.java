@@ -7,14 +7,12 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingSaveRequestD
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityBuildings;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityFlats;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityRooms;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.Landlord;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityUser;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.BuildingRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.FlatsRepository;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.LandlordRepository;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.BuildingServicesInterface;
-import jakarta.transaction.Transactional;
-import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -32,19 +30,19 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
     private final FlatsRepository flatsRepository;
     private final RoomRepository roomRepository;
     private final ImageService imageService;
-    private final LandlordRepository landlordRepository;
+    private final UserRepository userRepository;
     private final FolderProperties folderProperties;
 
     @Value("${building.link.src}")
     private String folder_building_link;
 
     @Autowired
-    public BuildingServicesImpl(BuildingRepository buildingRepository, FlatsRepository flatsRepository, RoomRepository repository, ImageService imageService, LandlordRepository landlordRepository,FolderProperties folderProperties) {
+    public BuildingServicesImpl(BuildingRepository buildingRepository, FlatsRepository flatsRepository, RoomRepository repository, ImageService imageService, UserRepository userRepository, FolderProperties folderProperties) {
         this.buildingRepository = buildingRepository;
         this.flatsRepository = flatsRepository;
         this.roomRepository = repository;
         this.imageService = imageService;
-        this.landlordRepository = landlordRepository;
+        this.userRepository = userRepository;
         this.folderProperties=folderProperties;
     }
 
@@ -181,9 +179,9 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
         building.setLongitude(dto.getLongitude());
 
         // You must fetch the landlord from the DB using mobile number
-        Landlord landlord = landlordRepository.findById(dto.getLandlord()).orElseThrow(()->new RuntimeException("no landlord found with ID: "+dto.getLandlord()));
+        EntityUser entityUser = userRepository.findById(dto.getLandlord()).orElseThrow(()->new RuntimeException("no landlord found with ID: "+dto.getLandlord()));
 
-        building.setLandlord(landlord);
+        building.setLandlord(entityUser);
 
         return building;
     }

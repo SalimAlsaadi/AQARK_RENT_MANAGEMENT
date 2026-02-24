@@ -14,7 +14,6 @@ import java.util.List;
 @NoArgsConstructor
 @Setter
 @Getter
-@ToString
 public class EntityBuildings {
 
     @Id
@@ -68,7 +67,7 @@ public class EntityBuildings {
 
     @ManyToOne
     @JoinColumn(name = "landlord_id", nullable = false)
-    private Landlord landlord;
+    private EntityUser landlord;
 
     @OneToMany(mappedBy = "building", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<EntityFlats> flats;
