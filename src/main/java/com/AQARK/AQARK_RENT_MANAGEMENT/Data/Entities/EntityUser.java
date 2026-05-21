@@ -33,11 +33,6 @@ public class EntityUser {
     private String lastName;
 
     @NotBlank
-    @Email
-    @Column(name = "email", unique = true, nullable = false)
-    private String email;
-
-    @NotBlank
     @Pattern(regexp = "^\\+?[0-9]{10,15}$", message = "Invalid phone number")
     @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
@@ -61,9 +56,8 @@ public class EntityUser {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ref_type_id", nullable = false)
-    private RefType refType;
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<EntityUserTypeMapping> userTypeMappings;
 
     @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<EntityProperty> properties;

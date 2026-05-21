@@ -5,16 +5,22 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.LocalDate;
 import java.util.List;
 
-@AllArgsConstructor
-@NoArgsConstructor
 @Setter
 @Getter
-public class RegistrationUserDTO {
+@AllArgsConstructor
+@NoArgsConstructor
+public class UpdateUserDetailsDTO {
+
+    private Long userId;
+
     @NotBlank
     private String firstName;
 
@@ -28,22 +34,22 @@ public class RegistrationUserDTO {
     @NotBlank
     private String phoneNumber;
 
+    @NotBlank
+    private String nationalId;
+
+    private String address;
+
     @NotNull
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate dateOfBirth;
 
-    private String address;
+    private Boolean isActive;
 
     private List<Integer> userType;
 
-    private Boolean isActive;
-
-    @NotBlank
-    private String nationalId;
 
     // ---------- AUTH FIELD ----------
     @NotBlank
     @Size(min = 8)
     private String password;
-
 }

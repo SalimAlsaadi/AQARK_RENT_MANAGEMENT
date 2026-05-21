@@ -1,28 +1,32 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Security;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
+import org.springframework.web.cors.CorsConfigurationSource;
 
-import java.util.Arrays;
+import java.time.Duration;
+import java.util.List;
 
 @Configuration
+@RequiredArgsConstructor
 public class CorsConfig {
 
     @Bean
-    public CorsFilter corsFilter() {
-        CorsConfiguration config = new CorsConfiguration();
+    public CorsConfigurationSource corsConfigurationSource(SecurityProperties props) {
 
-        config.setAllowCredentials(true);
-        config.setAllowedOrigins(Arrays.asList("http://localhost:4200")); // FRONTEND
-        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(Arrays.asList("Content-Type", "Authorization"));
-        config.setExposedHeaders(Arrays.asList("Set-Cookie"));
+        return request -> {
+            CorsConfiguration config = new CorsConfiguration();
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return new CorsFilter(source);
+            config.setAllowedOrigins(props.getCors().getAllowedOrigins());
+            config.setAllowedMethods(props.getCors().getAllowedMethods());
+            config.setAllowedHeaders(props.getCors().getAllowedHeaders());
+
+            config.setAllowCredentials(props.getCors().isAllowCredentials());
+            config.setMaxAge(props.getCors().getMaxAge());
+
+            return config;
+        };
     }
 }

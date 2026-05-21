@@ -4,13 +4,13 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "ref_types", schema = "app_root")
+@Table(name = "user_types", schema = "app_root")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class RefType {
+public class UserType {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
