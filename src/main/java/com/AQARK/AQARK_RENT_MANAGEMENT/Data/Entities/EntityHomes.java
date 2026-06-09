@@ -4,10 +4,11 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.Min;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Entity
-@Table(name = "EntityHome")
+@Table(name = "entity_home")
 @AllArgsConstructor
 @NoArgsConstructor
 @Getter
@@ -67,13 +68,8 @@ public class EntityHomes {
     private String rentType;
 
     @Column(nullable = false)
-    private Float price;
+    private BigDecimal price;
 
-
-    @ElementCollection
-    @CollectionTable(name = "home_pictures", joinColumns = @JoinColumn(name = "home_id"))
-    @Column(name = "picture_path")
-    private List<String> picturePaths;
 
     @ManyToOne
     @JoinColumn(name = "landlord_id", nullable = false)

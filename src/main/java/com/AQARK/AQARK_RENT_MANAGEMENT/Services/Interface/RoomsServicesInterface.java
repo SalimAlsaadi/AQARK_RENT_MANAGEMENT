@@ -9,13 +9,17 @@ import java.util.List;
 
 public interface RoomsServicesInterface {
 
-    String saveRoom(RoomSaveRequestDTO roomDTO, List<MultipartFile> images) throws IOException;
+    RoomDetailsDTO createRoom(RoomSaveRequestDTO dto, List<MultipartFile> images) throws IOException;
 
-    RoomDetailsDTO getRoomById(Long id);
+    RoomDetailsDTO updateRoom(Long roomId, RoomSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete) throws IOException;
+
+    RoomDetailsDTO getRoomById(Long roomId);
 
     List<RoomDetailsDTO> getAllRooms();
 
-    String updateRoom(Long roomId, RoomSaveRequestDTO updatedDTO, List<MultipartFile> newImages, List<String> imagesToDelete) throws IOException;
+    List<RoomDetailsDTO> getRoomsByFlatId(Long flatId);
 
-    String deleteRoom(Long roomId);
+    List<RoomDetailsDTO> getRoomsByHomeId(Long homeId);
+
+    void deleteRoom(Long roomId);
 }

@@ -1,32 +1,47 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO;
 
-import lombok.Getter;
-import lombok.Setter;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
+import lombok.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
 @Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class RoomDetailsDTO {
+
     private Long id;
 
-    private String description;
-    private Float price;
-    private boolean isRented;
-    private String tenantType;        // e.g., Family, Bachelor
-    private String rentalType;    //monthly, daily
+    private String roomName;
+    private String size;
 
-    // Address-related
+    private Boolean rented;
+    private String tenantType;
+    private String rentalType;
+
+    private BigDecimal price;
+
+    private Boolean hasPrivateBathroom;
+    private String description;
+
     private String region;
     private String wilaya;
-    private String location;          // e.g., Flat X, Building Y or Home address
+    private String location;
 
     private Double latitude;
     private Double longitude;
 
-    // Source of the room
-    private boolean fromFlat;         // true if it's from flat/building, false if from home
-    private Long sourceId;            // either flatId or homeId depending on `fromFlat`
+    private Boolean fromFlat;
+    private Long flatId;
+    private Long homeId;
+    private Long buildingId;
 
-    private List<String> pictureUrls; // Transformed URLs of room images
+    private String buildingName;
+    private String flatLabel;
+    private String homeLabel;
+
+    private List<PropertyMediaDTO> images;
 }

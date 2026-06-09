@@ -2,6 +2,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO;
 
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @AllArgsConstructor
@@ -12,6 +13,7 @@ import java.util.List;
 public class FlatsForShowListDTO {
 
     private Long id;
+    private String flatNumber;
     private String buildingName;
     private String numberOfRooms;
     private String numberOfBathroom;
@@ -24,7 +26,7 @@ public class FlatsForShowListDTO {
     private String wilaya;
     private Double latitude;
     private Double longitude;
-    private Float price;
+    private BigDecimal price;
     private String tenantType;
     private String rentTimeType;
     private List<String> pictures;

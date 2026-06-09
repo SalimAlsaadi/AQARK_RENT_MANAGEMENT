@@ -16,9 +16,13 @@ public class BuildingDetailsDTO {
     private String buildingName;
     private String region;
     private String wilaya;
-    private int totalFlats;
+    private String area;
     private int flatsRented;
     private int flatsNotRented;
+    private int roomsRented;
+    private int roomsNotRented;
+    private int shopsRented;
+    private int shopsNotRented;
     private int numberOfFloors;
     private boolean hasParking;
     private boolean hasGym;

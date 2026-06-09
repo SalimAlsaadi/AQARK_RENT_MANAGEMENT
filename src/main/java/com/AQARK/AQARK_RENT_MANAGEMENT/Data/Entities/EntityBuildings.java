@@ -31,20 +31,8 @@ public class EntityBuildings {
     @Column(name = "wilaya")
     private String wilaya;
 
-    @Min(1)
-    @Column(name = "total_flats", nullable = false)
-    private int totalFlats;
-
-    @Min(0)
-    @Column(name = "flats_rented", nullable = false)
-    private int flatsRented;
-
-    @Min(0)
-    @Column(name = "flats_not_rented", nullable = false)
-    private int flatsNotRented;
-
-    @Column(name = "number_of_floors", nullable = false)
-    private int numberOfFloors;
+    @Column(name = "Area")
+    private String area;
 
     @Column(name = "has_parking", nullable = false)
     private boolean hasParking;
@@ -54,6 +42,9 @@ public class EntityBuildings {
 
     @Column(name = "has_swimming_pool", nullable = false)
     private boolean hasSwimmingPool;
+
+    @Column(name = "number_of_floors")
+    private int number_of_floors;
 
     @Column(name = "description", length = 500)
     private String description;
@@ -72,8 +63,4 @@ public class EntityBuildings {
     @OneToMany(mappedBy = "building", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<EntityFlats> flats;
 
-    @ElementCollection
-    @CollectionTable(name = "building_pictures", joinColumns = @JoinColumn(name = "building_id"))
-    @Column(name = "picture_path", nullable = false)
-    private List<String> picturePaths;
 }

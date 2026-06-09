@@ -25,7 +25,7 @@ public class HomesController {
     }
 
     @GetMapping
-    public List<HomeSaveRequestDTO> getAllHomes() {
+    public List<HomeDetailsDTO> getAllHomes() {
         return homeService.getAllHomes();
     }
 
@@ -35,15 +35,15 @@ public class HomesController {
     }
 
 
-    @PostMapping(value = "/save", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> saveHome(
-            @RequestPart("homeData") String homeJson,
-            @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures
-    ) throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
-        HomeSaveRequestDTO home = mapper.readValue(homeJson, HomeSaveRequestDTO.class);
-        return ResponseEntity.ok(homeService.saveHome(home,pictures));
-    }
+//    @PostMapping(value = "/save", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+//    public ResponseEntity<HomeDetailsDTO> saveHome(
+//            @RequestPart("homeData") String homeJson,
+//            @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures
+//    ) throws IOException {
+//        ObjectMapper mapper = new ObjectMapper();
+//        HomeSaveRequestDTO home = mapper.readValue(homeJson, HomeSaveRequestDTO.class);
+//        return ResponseEntity.ok(homeService.createHome(home,pictures));
+//    }
 
 
     @GetMapping("/{id}")
@@ -52,17 +52,18 @@ public class HomesController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<String> deleteHomeById(@PathVariable Long id){
-        return ResponseEntity.ok(homeService.deleteHomeById(id));
+    public void deleteHomeById(@PathVariable Long id){
+        homeService.deleteHomeById(id);
     }
 
     @PutMapping()
-    public ResponseEntity<HomeDetailsDTO> updateHome(@RequestPart("home")HomeDetailsDTO home,
-                                                     @RequestPart(value = "imagesToDelete", required = false) List<String> imagesToDelete,
-                                                     @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages) throws IOException {
+    public ResponseEntity<HomeDetailsDTO> updateHome(@RequestPart("home")HomeSaveRequestDTO home,
+                                                     @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages,
+                                                     @RequestPart(value = "imagesToDelete", required = false) List<Long> imagesToDelete
+                                                     ) throws IOException {
 
         home.setId(home.getId());
-        HomeDetailsDTO updated = homeService.updateHome(home, imagesToDelete, newImages);
+        HomeDetailsDTO updated = homeService.updateHome(home, newImages, imagesToDelete);
         return ResponseEntity.ok(updated);
     }
 

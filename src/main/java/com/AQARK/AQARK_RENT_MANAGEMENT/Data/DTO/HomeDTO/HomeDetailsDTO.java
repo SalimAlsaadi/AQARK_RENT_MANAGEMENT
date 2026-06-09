@@ -1,35 +1,46 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
+import lombok.*;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class HomeDetailsDTO {
+
     private Long id;
     private String homeType;
-    private int numberOfRooms;
-    private int numberOfBathrooms;
-    private boolean hasLivingRoom;
-    private boolean furnished;
-    private boolean rented;
+
+    private Integer numberOfRooms;
+    private Integer numberOfBathrooms;
+
+    private Boolean hasLivingRoom;
+    private Boolean furnished;
+    private Boolean rented;
+
     private Integer floorNumber;
     private String description;
+
     private String region;
     private String wilaya;
     private String location;
+
     private Double latitude;
     private Double longitude;
+
     private String tenantType;
     private String rentType;
-    private Float price;
-    private String landlordName;           // e.g., "Salim Al Saadi"
-    private String landlordMobileNumber;   // e.g., "+96891234567"
-    private List<String> pictureUrls;      // URLs to images
+
+    private BigDecimal price;
+
+    private Long landlordId;
+    private String landlordName;
+    private String landlordMobileNumber;
+
+    private List<PropertyMediaDTO> images;
 }

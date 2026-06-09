@@ -18,8 +18,6 @@ public interface FlatsRepository extends JpaRepository<EntityFlats, Long> {
       AND (:#{#flat.floorNumber} IS NULL OR f.floorNumber = :#{#flat.floorNumber})
       AND (:#{#flat.tenantType} IS NULL OR f.tenantType = :#{#flat.tenantType})
       AND (:#{#flat.rentTimeType} IS NULL OR f.rentalType = :#{#flat.rentTimeType})
-      AND (:#{#flat.region} IS NULL OR f.region = :#{#flat.region})
-      AND (:#{#flat.wilaya} IS NULL OR f.wilaya = :#{#flat.wilaya})
       AND (:#{#flat.price} IS NULL OR f.price <= :#{#flat.price})
 """)
     List<EntityFlats> findFlats(@Param("flat") HostelSearchRequestDTO flat);
@@ -27,4 +25,13 @@ public interface FlatsRepository extends JpaRepository<EntityFlats, Long> {
 
 
     List<EntityFlats> findByLandlordId(Long landlordID);
+
+    List<EntityFlats> findByBuildingId(Long buildingId);
+
+    int countByBuildingId(Long buildingId);
+
+    int countByBuildingIdAndIsRentedTrue(Long buildingId);
+
+    int countByBuildingIdAndIsRentedFalse(Long buildingId);
+
 }

@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.AssertTrue;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "rooms")
 @Getter
@@ -32,19 +34,13 @@ public class EntityRooms {
     private String rentalType;    //monthly, daily
 
     @Column(name = "price")
-    private Float price; // Optional: if rooms are rented individually
+    private BigDecimal price; // Optional: if rooms are rented individually
 
 
     @Column(name = "has_private_bathroom")
     private boolean hasPrivateBathroom;
 
     private String description;
-
-    // Optional: images for the room
-    @ElementCollection
-    @CollectionTable(name = "room_pictures", joinColumns = @JoinColumn(name = "room_id"))
-    @Column(name = "picture_path")
-    private java.util.List<String> picturePaths;
 
     // One of the following should be populated:
     @ManyToOne
@@ -60,19 +56,4 @@ public class EntityRooms {
         return (flat != null) ^ (home != null); // XOR: one is set, not both
     }
 
-
-    // Optional: computed method for context info
-    public String getContextAddress() {
-        if (flat != null && flat.getBuilding() != null) {
-            return "Building: " + flat.getBuilding().getBuildingName()
-                    + ", Flat Floor: " + flat.getFloorNumber()
-                    + ", Region: " + flat.getRegion()
-                    + ", Wilaya: " + flat.getWilaya();
-        } else if (home != null) {
-            return "Home: " + home.getRegion()
-                    + ", Wilaya: " + home.getWilaya();
-        } else {
-            return "Unknown Location";
-        }
-    }
 }

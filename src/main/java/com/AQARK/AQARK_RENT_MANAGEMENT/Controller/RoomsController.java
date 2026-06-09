@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation.RoomsServicesImpl;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface;
@@ -23,8 +24,9 @@ public class RoomsController {
     public RoomsController(RoomsServicesImpl roomService){
         this.roomService=roomService;
     }
+
     @PostMapping(value = "/save", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> createRoom(
+    public ResponseEntity<RoomDetailsDTO> createRoom(
             @RequestPart("roomData") String roomData,
             @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures) throws IOException {
 
@@ -32,12 +34,12 @@ public class RoomsController {
 
 
         // Then call your roomService.saveRoom(dto);
-        return ResponseEntity.ok(roomService.saveRoom(dto, pictures));
+        return ResponseEntity.ok(roomService.createRoom(dto, pictures));
     }
 
     @DeleteMapping("/{roomId}")
-    public ResponseEntity<String> deleteRoomById(@PathVariable Long roomId){
-       return ResponseEntity.ok(roomService.deleteRoom(roomId)) ;
+    public void deleteRoomById(@PathVariable Long roomId){
+       roomService.deleteRoom(roomId) ;
     }
 
 }

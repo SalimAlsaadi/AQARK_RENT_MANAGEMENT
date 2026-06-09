@@ -3,6 +3,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO;
 import lombok.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -16,7 +17,7 @@ public class RoomSaveRequestDTO {
     private boolean rented;     // true by default
     private String tenantType;
     private String rentalType;    //monthly, daily
-    private Float price;                    // Optional individual room price
+    private BigDecimal price;                    // Optional individual room price
     private boolean hasAC;
     private boolean hasPrivateBathroom;
     private String description;

@@ -10,13 +10,15 @@ import java.util.List;
 
 public interface BuildingServicesInterface {
 
-    BuildingDetailsDTO createBuilding(BuildingSaveRequestDTO building, List<MultipartFile> pictures) throws IOException;
+    BuildingDetailsDTO createBuilding(BuildingSaveRequestDTO building, List<MultipartFile> pictures, Long landlod) throws IOException;
 
     BuildingDetailsDTO getBuildingById(Long id);
 
     List<EntityBuildings> getAllBuildings();
 
-    BuildingDetailsDTO updateBuilding(BuildingDetailsDTO updatedBuilding, List<String> picturesToDelete, List<MultipartFile> newPictures) throws IOException;
+    BuildingDetailsDTO updateBuilding(BuildingDetailsDTO updatedBuilding, List<Long> picturesToDelete, List<MultipartFile> newPictures) throws IOException;
 
-    void deleteBuilding(Long id);
+    List<BuildingDetailsDTO> getBuildingByLandlordID(Long landlordId) throws IOException;
+
+    //void deleteBuilding(Long id);
 }

@@ -1,8 +1,7 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatSaveRequestDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.HostelSearchRequestDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatsForShowListDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.FlatsServicesInterface;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,52 +23,58 @@ public class FlatsController {
         this.flatsService = flatsService;
     }
 
-    @PostMapping
-    public ResponseEntity<String> saveFlat(
-            @RequestPart("flatData") String flatDataJson,
-            @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures
-    ) throws IOException {
+//    @PostMapping
+//    public ResponseEntity<FlatDetailsDTO> saveFlat(
+//            @RequestPart("flatData") String flatDataJson,
+//            @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures
+//    ) throws IOException {
+//
+//        // Convert JSON string to DTO
+//        ObjectMapper mapper = new ObjectMapper();
+//        FlatSaveRequestDTO flatDTO = mapper.readValue(flatDataJson, FlatSaveRequestDTO.class);
+//
+//        FlatDetailsDTO result = flatsService.createFlat(flatDTO, pictures);
+//        return ResponseEntity.ok(result);
+//    }
 
-        // Convert JSON string to DTO
-        ObjectMapper mapper = new ObjectMapper();
-        FlatSaveRequestDTO flatDTO = mapper.readValue(flatDataJson, FlatSaveRequestDTO.class);
 
-        String result = flatsService.saveFlats(flatDTO, pictures);
-        return ResponseEntity.ok(result);
-    }
-
-
-    // Get all flats
-    @GetMapping("/all")
-    public ResponseEntity<List<FlatsForShowListDTO>> getAllFlats() {
-        return ResponseEntity.ok(flatsService.getAllHostels());
-    }
+//    // Get all flats
+//    @GetMapping("/all")
+//    public ResponseEntity<List<FlatsForShowListDTO>> getAllFlats() {
+//        return ResponseEntity.ok(flatsService.getAllHostels());
+//    }
 
     // Search flats
-    @PostMapping("/search")
-    public ResponseEntity<List<FlatsForShowListDTO>> searchFlats(@RequestBody HostelSearchRequestDTO search) {
-        return ResponseEntity.ok(flatsService.getHostelBySearch(search));
-    }
+//    @PostMapping("/search")
+//    public ResponseEntity<List<FlatsForShowListDTO>> searchFlats(@RequestBody HostelSearchRequestDTO search) {
+//        return ResponseEntity.ok(flatsService.getHostelBySearch(search));
+//    }
 
     // Get flats by landlord ID
     @GetMapping("/landlord/{landlordId}")
-    public ResponseEntity<List<FlatsForShowListDTO>> getFlatsByLandlord(@PathVariable Long landlordId) {
-        return ResponseEntity.ok(flatsService.getHostelByLandlordID(landlordId));
+    public ResponseEntity<List<FlatDetailsDTO>> getFlatsByLandlord(@PathVariable Long landlordId) {
+        return ResponseEntity.ok(flatsService.getFlatsByLandlordId(landlordId));
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<FlatsForShowListDTO> getFlatById(@PathVariable long id){
-        return ResponseEntity.ok(flatsService.getFlatById(id));
+    @PostMapping("/getFlatsByBuildingId")
+    public ResponseEntity<List<FlatDetailsDTO>> getFlatsByBuildingId(@RequestBody BuildingIdDTO buildingIdD){
+
+        return ResponseEntity.ok(flatsService.getFlatsByBuildingId(buildingIdD.getBuildingId()));
+
+    }
+    @PostMapping("/getFlatById")
+    public ResponseEntity<FlatDetailsDTO> getFlatById(@RequestBody FlatIdDTO flat){
+        return ResponseEntity.ok(flatsService.getFlatById(flat.getFlatId()));
     }
 
     // Update flat (including images)
     @PutMapping()
-    public ResponseEntity<String> updateFlat(
+    public ResponseEntity<FlatDetailsDTO> updateFlat(
             @RequestPart("flatData") FlatSaveRequestDTO flatDTO,
             @RequestPart(value = "pictures", required = false) List<MultipartFile> newPictures,
-            @RequestParam(value = "imagesToDelete", required = false) List<String> imagesToDelete) throws IOException {
+            @RequestParam(value = "imagesToDelete", required = false) List<Long> imagesToDelete) throws IOException {
 
-        String result = flatsService.updateFlat(flatDTO, newPictures, imagesToDelete);
+        FlatDetailsDTO result = flatsService.updateFlat(flatDTO, newPictures, imagesToDelete);
         return ResponseEntity.ok(result);
     }
 
