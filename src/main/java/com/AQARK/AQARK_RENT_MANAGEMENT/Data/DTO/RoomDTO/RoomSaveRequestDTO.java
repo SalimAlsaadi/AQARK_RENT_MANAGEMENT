@@ -1,10 +1,8 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO;
 
 import lombok.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
-import java.util.List;
 
 @Getter
 @Setter
@@ -12,19 +10,43 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 public class RoomSaveRequestDTO {
-    private String roomName;                // Optional: "Room A", etc.
-    private String size;                    // e.g., "4x5m", "20 sqm"
-    private boolean rented;     // true by default
+
+    private String roomNumber;
+
+    private String size;
+
+    private Boolean rented;
+
     private String tenantType;
-    private String rentalType;    //monthly, daily
-    private BigDecimal price;                    // Optional individual room price
-    private boolean hasAC;
-    private boolean hasPrivateBathroom;
+
+    private String rentTimeType;
+
+    private BigDecimal price;
+
+    private Boolean hasPrivateBathroom;
+
+    private Boolean hasAC;
+
+    private Boolean hasWIFI;
+
+    private String kitchen;
+
+    private Boolean isFurnished;
+
     private String description;
 
-    // Only one of the following should be set (not both)
+    /*
+     * Required only if room belongs to flat.
+     */
+    private Long buildingId;
+
+    /*
+     * Required only if room belongs to flat.
+     */
     private Long flatId;
+
+    /*
+     * Required only if room belongs to home.
+     */
     private Long homeId;
-
-
 }

@@ -40,6 +40,7 @@ public class BuildingsController {
 
         Long landlordId = jwt.getClaim("refId");
 
+        System.out.println(data);
         return ResponseEntity.ok(propertyCommonServiceInterface.create(propertyType, data, pictures, landlordId));
     }
 

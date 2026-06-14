@@ -62,6 +62,13 @@ public class FlatsController {
         return ResponseEntity.ok(flatsService.getFlatsByBuildingId(buildingIdD.getBuildingId()));
 
     }
+
+    @PostMapping("/getFlatListByBuildingId")
+    public ResponseEntity<List<FlatListDTO>> getFlatListByBuildingId(@RequestBody BuildingIdDTO buildingId){
+        return ResponseEntity.ok(flatsService.getFlatsList(buildingId));
+    }
+
+
     @PostMapping("/getFlatById")
     public ResponseEntity<FlatDetailsDTO> getFlatById(@RequestBody FlatIdDTO flat){
         return ResponseEntity.ok(flatsService.getFlatById(flat.getFlatId()));

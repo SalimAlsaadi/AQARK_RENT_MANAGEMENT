@@ -15,26 +15,33 @@ public class RoomDetailsDTO {
 
     private Long id;
 
-    private String roomName;
+    private String roomNumber;
     private String size;
 
     private Boolean rented;
     private String tenantType;
-    private String rentalType;
+    private String rentTimeType;
 
     private BigDecimal price;
 
     private Boolean hasPrivateBathroom;
+    private Boolean hasAC;
+    private Boolean hasWIFI;
+    private Boolean isFurnished;
+
+    private String kitchen;
+
     private String description;
 
-    private String region;
-    private String wilaya;
-    private String location;
+    private String region;  //will take region from building or home
+    private String wilaya; //will take wilaya from building or home
+    private String area;  //will take area from building or home
 
-    private Double latitude;
-    private Double longitude;
+    private Double latitude; //will take latitude from building or home
+    private Double longitude; //will take longitude from building or home
 
     private Boolean fromFlat;
+
     private Long flatId;
     private Long homeId;
     private Long buildingId;

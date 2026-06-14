@@ -3,6 +3,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.PropertyMediaService;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatDetailsDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatListDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
@@ -131,6 +132,24 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         List<EntityFlats> flats=flatsRepository.findByBuildingId(buildingIdDTO.getBuildingId());
 
         return convertListFlatsToDTO(flats);
+    }
+
+
+    @Override
+    public List<FlatListDTO> getFlatsList(BuildingIdDTO buildingId){
+        List<EntityFlats> flats=flatsRepository.findByBuildingId(buildingId.getBuildingId());
+
+        List<FlatListDTO> flatList=new ArrayList<>();
+
+        for(EntityFlats flat : flats){
+            FlatListDTO flatListDTO=new FlatListDTO();
+            flatListDTO.setFlatId(flat.getId());
+            flatListDTO.setFlatNumber(flat.getFlatNumber());
+            flatListDTO.setFloorNumber(flat.getFloorNumber());
+
+            flatList.add(flatListDTO);
+        }
+        return flatList;
     }
 
     @Override

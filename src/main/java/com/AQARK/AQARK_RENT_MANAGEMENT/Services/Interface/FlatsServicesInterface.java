@@ -2,6 +2,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatDetailsDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatListDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatSaveRequestDTO;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,6 +22,8 @@ public interface FlatsServicesInterface {
     List<FlatDetailsDTO> getFlatsByBuildingId(Long buildingId);
 
     List<FlatDetailsDTO> getFlatsByLandlordId(Long landlordId);
+
+    List<FlatListDTO> getFlatsList(BuildingIdDTO buildingId);
 
     void deleteFlat(Long flatId);
 }

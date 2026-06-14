@@ -13,6 +13,7 @@ public interface RoomRepository extends JpaRepository<EntityRooms, Long> {
     boolean existsByHomeId(Long homeId);
     List<EntityRooms> findByHomeId(Long homeId);
     List<EntityRooms> findByFlatId(Long flatId);
+    List<EntityRooms> findByBuildingId(Long buildingId);
 
     int countByFlatBuildingId(Long buildingId);//count total room in building
 

@@ -4,7 +4,12 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.PropertyMediaService;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityBuildings;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityFlats;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityHomes;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityRooms;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.MediaOwnerType;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.BuildingRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.FlatsRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.HomeRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
@@ -25,46 +30,32 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     private final RoomRepository roomRepository;
     private final FlatsRepository flatsRepository;
     private final HomeRepository homeRepository;
+    private final BuildingRepository buildingRepository;
     private final PropertyMediaService propertyMediaService;
 
     @Override
     @Transactional
-    public RoomDetailsDTO createRoom(
-            RoomSaveRequestDTO dto,
-            List<MultipartFile> images
-    ) throws IOException {
+    public RoomDetailsDTO createRoom(RoomSaveRequestDTO dto, List<MultipartFile> images) throws IOException {
 
-        validateCreateRequest(dto);
+        validateCreateRoomRequest(dto);
 
         EntityRooms room = new EntityRooms();
 
-        room.setRoomName(dto.getRoomName());
-        room.setSize(dto.getSize());
-        room.setRented(dto.isRented());
-        room.setTenantType(dto.getTenantType());
-        room.setRentalType(dto.getRentalType());
-        room.setPrice(dto.getPrice());
-        room.setHasPrivateBathroom(dto.isHasPrivateBathroom());
-        room.setDescription(dto.getDescription());
+        applyRoomFields(room, dto);
 
-        if (dto.getFlatId() != null) {
-            EntityFlats flat = flatsRepository.findById(dto.getFlatId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Flat not found with ID: " + dto.getFlatId()
-                    ));
-
-            room.setFlat(flat);
-            room.setHome(null);
+        if (isFlatRoomRequest(dto)) {
+            assignRoomToFlat(
+                    room,
+                    dto.getBuildingId(),
+                    dto.getFlatId()
+            );
         }
 
-        if (dto.getHomeId() != null) {
-            EntityHomes home = homeRepository.findById(dto.getHomeId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Home not found with ID: " + dto.getHomeId()
-                    ));
-
-            room.setHome(home);
-            room.setFlat(null);
+        if (isHomeRoomRequest(dto)) {
+            assignRoomToHome(
+                    room,
+                    dto.getHomeId()
+            );
         }
 
         EntityRooms savedRoom = roomRepository.save(room);
@@ -82,46 +73,34 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
     @Override
     @Transactional
-    public RoomDetailsDTO updateRoom(
-            Long roomId,
-            RoomSaveRequestDTO dto,
-            List<MultipartFile> newImages,
-            List<Long> imageIdsToDelete
-    ) throws IOException {
+    public RoomDetailsDTO updateRoom(Long roomId, RoomSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete) throws IOException {
 
-        if (roomId == null || roomId <= 0) {
-            throw new IllegalArgumentException("Room ID is required.");
+        validateId(roomId, "Room ID");
+
+        if (dto == null) {
+            throw new IllegalArgumentException("Room request is required.");
         }
 
-        EntityRooms room = roomRepository.findById(roomId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Room not found with ID: " + roomId
-                ));
+        EntityRooms room = roomRepository.findById(roomId).orElseThrow(() -> new IllegalArgumentException("Room not found with ID: " + roomId));
 
-        updateRoomFields(room, dto);
+        applyRoomFields(room, dto);
 
-        if (dto.getFlatId() != null && dto.getHomeId() != null) {
-            throw new IllegalArgumentException("Room cannot belong to both flat and home.");
-        }
 
-        if (dto.getFlatId() != null) {
-            EntityFlats flat = flatsRepository.findById(dto.getFlatId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Flat not found with ID: " + dto.getFlatId()
-                    ));
+        if (hasAnyParentField(dto)) {
 
-            room.setFlat(flat);
-            room.setHome(null);
-        }
+            if (!isValidParentRequest(dto)) {
+                throw new IllegalArgumentException(
+                        "Room must belong either to building + flat, or to home only."
+                );
+            }
 
-        if (dto.getHomeId() != null) {
-            EntityHomes home = homeRepository.findById(dto.getHomeId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Home not found with ID: " + dto.getHomeId()
-                    ));
+            if (isFlatRoomRequest(dto)) {
+                assignRoomToFlat(room, dto.getBuildingId(), dto.getFlatId());
+            }
 
-            room.setHome(home);
-            room.setFlat(null);
+            if (isHomeRoomRequest(dto)) {
+                assignRoomToHome(room, dto.getHomeId());
+            }
         }
 
         EntityRooms savedRoom = roomRepository.save(room);
@@ -139,10 +118,9 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     @Override
     public RoomDetailsDTO getRoomById(Long roomId) {
 
-        EntityRooms room = roomRepository.findById(roomId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Room not found with ID: " + roomId
-                ));
+        validateId(roomId, "Room ID");
+
+        EntityRooms room = roomRepository.findById(roomId).orElseThrow(() -> new IllegalArgumentException("Room not found with ID: " + roomId));
 
         return convertToDTO(room);
     }
@@ -157,11 +135,20 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     }
 
     @Override
+    public List<RoomDetailsDTO> getRoomsByBuildingId(Long buildingId) {
+
+        validateId(buildingId, "Building ID");
+
+        return roomRepository.findByBuildingId(buildingId)
+                .stream()
+                .map(this::convertToDTO)
+                .toList();
+    }
+
+    @Override
     public List<RoomDetailsDTO> getRoomsByFlatId(Long flatId) {
 
-        if (flatId == null || flatId <= 0) {
-            throw new IllegalArgumentException("Flat ID is required.");
-        }
+        validateId(flatId, "Flat ID");
 
         return roomRepository.findByFlatId(flatId)
                 .stream()
@@ -172,9 +159,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     @Override
     public List<RoomDetailsDTO> getRoomsByHomeId(Long homeId) {
 
-        if (homeId == null || homeId <= 0) {
-            throw new IllegalArgumentException("Home ID is required.");
-        }
+        validateId(homeId, "Home ID");
 
         return roomRepository.findByHomeId(homeId)
                 .stream()
@@ -186,10 +171,9 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     @Transactional
     public void deleteRoom(Long roomId) {
 
-        EntityRooms room = roomRepository.findById(roomId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Room not found with ID: " + roomId
-                ));
+        validateId(roomId, "Room ID");
+
+        EntityRooms room = roomRepository.findById(roomId).orElseThrow(() -> new IllegalArgumentException("Room not found with ID: " + roomId));
 
         propertyMediaService.softDeleteAllImages(
                 MediaOwnerType.ROOM,
@@ -199,352 +183,269 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         roomRepository.delete(room);
     }
 
-    private void updateRoomFields(
-            EntityRooms room,
-            RoomSaveRequestDTO dto
-    ) {
+    private void applyRoomFields(EntityRooms room, RoomSaveRequestDTO dto) {
 
-        if (dto.getRoomName() != null) {
-            room.setRoomName(dto.getRoomName());
+        if (dto.getRoomNumber() != null) {
+            room.setRoomNumber(trimToNull(dto.getRoomNumber()));
         }
 
         if (dto.getSize() != null) {
-            room.setSize(dto.getSize());
+            room.setSize(trimToNull(dto.getSize()));
         }
 
-        room.setRented(dto.isRented());
+        if (dto.getRented() != null) {
+            room.setRented(Boolean.TRUE.equals(dto.getRented()));
+        }
 
         if (dto.getTenantType() != null) {
-            room.setTenantType(dto.getTenantType());
+            room.setTenantType(trimToNull(dto.getTenantType()));
         }
 
-        if (dto.getRentalType() != null) {
-            room.setRentalType(dto.getRentalType());
+        if (dto.getRentTimeType() != null) {
+            room.setRentTimeType(trimToNull(dto.getRentTimeType()));
         }
 
         if (dto.getPrice() != null) {
+            if (dto.getPrice().signum() < 0) {
+                throw new IllegalArgumentException("Room price cannot be negative.");
+            }
+
             room.setPrice(dto.getPrice());
         }
 
-        room.setHasPrivateBathroom(dto.isHasPrivateBathroom());
+        if (dto.getHasPrivateBathroom() != null) {
+            room.setHasPrivateBathroom(Boolean.TRUE.equals(dto.getHasPrivateBathroom()));
+        }
+
+        if (dto.getHasAC() != null) {
+            room.setHasAC(Boolean.TRUE.equals(dto.getHasAC()));
+        }
+
+        if (dto.getHasWIFI() != null) {
+            room.setHasWIFI(Boolean.TRUE.equals(dto.getHasWIFI()));
+        }
+
+        if (dto.getKitchen() != null) {
+            room.setKitchen(trimToNull(dto.getKitchen()));
+        }
+
+        if (dto.getIsFurnished() != null) {
+            room.setFurnished(Boolean.TRUE.equals(dto.getIsFurnished()));
+        }
 
         if (dto.getDescription() != null) {
-            room.setDescription(dto.getDescription());
+            room.setDescription(trimToNull(dto.getDescription()));
         }
+    }
+
+    private void assignRoomToFlat(EntityRooms room, Long buildingId, Long flatId) {
+
+        validateId(buildingId, "Building ID");
+        validateId(flatId, "Flat ID");
+
+        EntityBuildings building = buildingRepository.findById(buildingId).orElseThrow(() -> new IllegalArgumentException("Building not found with ID: " + buildingId));
+
+        EntityFlats flat = flatsRepository.findById(flatId).orElseThrow(() -> new IllegalArgumentException("Flat not found with ID: " + flatId));
+
+        if (flat.getBuilding() == null || !flat.getBuilding().getId().equals(building.getId())) {
+            throw new IllegalArgumentException("Selected flat does not belong to selected building.");
+        }
+
+        String cleanRoomNumber = extractCleanRoomNumber(room.getRoomNumber());
+
+        room.setRoomNumber(
+                "B-" + building.getId()
+                        + "_F-" + flat.getFlatNumber()
+                        + "_R-" + cleanRoomNumber
+        );
+
+        room.setBuilding(building);
+        room.setFlat(flat);
+        room.setHome(null);
+    }
+
+    private void assignRoomToHome(EntityRooms room, Long homeId) {
+
+        validateId(homeId, "Home ID");
+
+        EntityHomes home = homeRepository.findById(homeId).orElseThrow(() -> new IllegalArgumentException("Home not found with ID: " + homeId));
+
+        String cleanRoomNumber = extractCleanRoomNumber(room.getRoomNumber());
+
+        room.setRoomNumber(
+                "H-" + home.getId()
+                        + "_R-" + cleanRoomNumber
+        );
+
+        room.setHome(home);
+        room.setBuilding(null);
+        room.setFlat(null);
     }
 
     private RoomDetailsDTO convertToDTO(EntityRooms room) {
 
+        EntityBuildings building = room.getBuilding();
         EntityFlats flat = room.getFlat();
         EntityHomes home = room.getHome();
 
-        EntityBuildings building =
-                flat != null ? flat.getBuilding() : null;
+        boolean fromFlat = building != null && flat != null && home == null;
+
+        boolean fromHome = building == null && flat == null && home != null;
 
         List<PropertyMediaDTO> images = propertyMediaService.getImages(
                 MediaOwnerType.ROOM,
                 room.getId()
         );
 
-        boolean fromFlat = flat != null;
+        String region = null;
+        String wilaya = null;
+        String area = null;
+
+        Double latitude = null;
+        Double longitude = null;
+
+        if (fromFlat) {
+            region = building.getRegion();
+            wilaya = building.getWilaya();
+
+            area = "Flat " + flat.getFlatNumber();
+
+            latitude = building.getLatitude();
+            longitude = building.getLongitude();
+        }
+
+        if (fromHome) {
+            region = home.getRegion();
+            wilaya = home.getWilaya();
+
+            area = home.getLocation();
+
+            latitude = home.getLatitude();
+            longitude = home.getLongitude();
+        }
 
         return RoomDetailsDTO.builder()
                 .id(room.getId())
 
-                .roomName(room.getRoomName())
+                .roomNumber(room.getRoomNumber())
                 .size(room.getSize())
 
                 .rented(room.isRented())
                 .tenantType(room.getTenantType())
-                .rentalType(room.getRentalType())
+                .rentTimeType(room.getRentTimeType())
 
                 .price(room.getPrice())
 
                 .hasPrivateBathroom(room.isHasPrivateBathroom())
+                .hasAC(room.isHasAC())
+                .hasWIFI(room.isHasWIFI())
+                .isFurnished(room.isFurnished())
+
+                .kitchen(room.getKitchen())
                 .description(room.getDescription())
 
-                .region(fromFlat ? flat.getBuilding().getRegion() : home != null ? home.getRegion() : null)
-                .wilaya(fromFlat ? flat.getBuilding().getWilaya() : home != null ? home.getWilaya() : null)
-                .location(fromFlat
-                        ? "Flat ID: " + flat.getId()
-                        : home != null ? home.getLocation() : null)
+                .region(region)
+                .wilaya(wilaya)
+                .area(area)
 
-                .latitude(fromFlat ? flat.getBuilding().getLatitude() : home != null ? home.getLatitude() : null)
-                .longitude(fromFlat ? flat.getBuilding().getLongitude() : home != null ? home.getLongitude() : null)
+                .latitude(latitude)
+                .longitude(longitude)
 
                 .fromFlat(fromFlat)
+
+                .buildingId(building != null ? building.getId() : null)
                 .flatId(flat != null ? flat.getId() : null)
                 .homeId(home != null ? home.getId() : null)
-                .buildingId(building != null ? building.getId() : null)
 
                 .buildingName(building != null ? building.getBuildingName() : null)
-                .flatLabel(flat != null ? "Flat " + flat.getId() : null)
+                .flatLabel(flat != null ? "Flat " + flat.getFlatNumber() : null)
                 .homeLabel(home != null ? "Home " + home.getId() : null)
 
                 .images(images != null ? images : Collections.emptyList())
+
                 .build();
     }
 
-    private void validateCreateRequest(RoomSaveRequestDTO dto) {
+    private void validateCreateRoomRequest(RoomSaveRequestDTO dto) {
 
         if (dto == null) {
-            throw new IllegalArgumentException("Room request body is required.");
+            throw new IllegalArgumentException("Room request is required.");
         }
 
-        boolean hasFlat = dto.getFlatId() != null;
-        boolean hasHome = dto.getHomeId() != null;
-
-        if (hasFlat == hasHome) {
-            throw new IllegalArgumentException(
-                    "Room must belong to either a flat or a home, not both or neither."
-            );
+        if (isBlank(dto.getRoomNumber())) {
+            throw new IllegalArgumentException("Room number is required.");
         }
 
-        if (dto.getPrice() == null) {
-            throw new IllegalArgumentException("Room price is required.");
+        if (!isValidParentRequest(dto)) {
+            throw new IllegalArgumentException("Room must belong either to building + flat, or to home only.");
         }
 
-        if (dto.getRentalType() == null || dto.getRentalType().isBlank()) {
-            throw new IllegalArgumentException("Rental type is required.");
-        }
-
-        if (dto.getTenantType() == null || dto.getTenantType().isBlank()) {
-            throw new IllegalArgumentException("Tenant type is required.");
+        if (dto.getPrice() != null && dto.getPrice().signum() < 0) {
+            throw new IllegalArgumentException("Room price cannot be negative.");
         }
     }
+
+    private boolean isValidParentRequest(RoomSaveRequestDTO dto) {
+
+        return isFlatRoomRequest(dto) || isHomeRoomRequest(dto);
+    }
+
+    private boolean isFlatRoomRequest(RoomSaveRequestDTO dto) {
+
+        return dto.getBuildingId() != null &&
+                dto.getFlatId() != null &&
+                dto.getHomeId() == null;
+    }
+
+    private boolean isHomeRoomRequest(RoomSaveRequestDTO dto) {
+
+        return dto.getBuildingId() == null &&
+                dto.getFlatId() == null &&
+                dto.getHomeId() != null;
+    }
+
+    private boolean hasAnyParentField(RoomSaveRequestDTO dto) {
+
+        return dto.getBuildingId() != null ||
+                dto.getFlatId() != null ||
+                dto.getHomeId() != null;
+    }
+
+    private String extractCleanRoomNumber(String roomNumber) {
+
+        String value = trimToNull(roomNumber);
+
+        if (value == null) {
+            throw new IllegalArgumentException("Room number is required.");
+        }
+
+        if (value.contains("_R-")) {
+            return value.substring(value.lastIndexOf("_R-") + 3);
+        }
+
+        return value;
+    }
+
+    private void validateId(Long id, String fieldName) {
+
+        if (id == null || id <= 0) {
+            throw new IllegalArgumentException(fieldName + " is required.");
+        }
+    }
+
+    private String trimToNull(String value) {
+
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private boolean isBlank(String value) {
+
+        return value == null || value.trim().isEmpty();
+    }
 }
-
-
-
-
-//package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation;
-//
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.FolderProperties;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityFlats;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityHomes;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityRooms;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.FlatsRepository;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.HomeRepository;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.ImageService;
-//
-//import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface;
-//import jakarta.transaction.Transactional;
-//import org.springframework.beans.factory.annotation.Autowired;
-//import org.springframework.beans.factory.annotation.Value;
-//import org.springframework.stereotype.Service;
-//import org.springframework.web.multipart.MultipartFile;
-//
-//import java.io.IOException;
-//import java.nio.file.Path;
-//import java.nio.file.Paths;
-//import java.util.List;
-//
-//@Service
-//public class RoomsServicesImpl implements RoomsServicesInterface {
-//
-//    private final RoomRepository roomRepository;
-//    private final FlatsRepository flatsRepository;
-//    private final HomeRepository homeRepository;
-//    private final ImageService imageService;
-//    private final FolderProperties folder;
-//
-//    @Value("${room.link.src}")
-//    private String room_link;
-//
-//    @Autowired
-//    public RoomsServicesImpl(RoomRepository roomRepository,
-//                             FlatsRepository flatsRepository,
-//                             HomeRepository homeRepository,
-//                             ImageService imageService, FolderProperties folderProperties) {
-//        this.roomRepository = roomRepository;
-//        this.flatsRepository = flatsRepository;
-//        this.homeRepository = homeRepository;
-//        this.imageService = imageService;
-//        this.folder = folderProperties;
-//    }
-//
-//    @Override
-//    public String saveRoom(RoomSaveRequestDTO dto, List<MultipartFile> images) throws IOException {
-//        EntityRooms room = new EntityRooms();
-//        room.setRoomName(dto.getRoomName());
-//        room.setSize(dto.getSize());
-//        room.setRentalType(dto.getRentalType());
-//        room.setDescription(dto.getDescription());
-//        room.setPrice(dto.getPrice());
-//        room.setRented(dto.isRented());
-//        room.setTenantType(dto.getTenantType());
-//        room.setHasPrivateBathroom(dto.isHasPrivateBathroom());
-//
-//
-//        if (dto.getFlatId() != null) {
-//            EntityFlats flat = flatsRepository.findById(dto.getFlatId())
-//                    .orElseThrow(() -> new IllegalArgumentException("Flat not found: " + dto.getFlatId()));
-//            room.setFlat(flat);
-//        }
-//
-//        if (dto.getHomeId() != null) {
-//            EntityHomes home = homeRepository.findById(dto.getHomeId())
-//                    .orElseThrow(() -> new IllegalArgumentException("Home not found: " + dto.getHomeId()));
-//            room.setHome(home);
-//        }
-//
-//        room = roomRepository.save(room);
-//
-//        if (images != null && !images.isEmpty()) {
-//            String baseFolder = folder.getRooms();
-//            String subFolder;
-//
-//            if (room.getFlat() != null) {
-//                Long buildingId = room.getFlat().getBuilding().getId();
-//                Long flatId = room.getFlat().getId();
-//                Long roomId = room.getId();
-//
-//                     subFolder = folder.getBuilding() + "_" + buildingId + "/" +
-//                                 folder.getFlat() + "_" + flatId + "/" +
-//                                 folder.getRooms() + "_" + roomId;
-//
-//            } else if (room.getHome() != null) {
-//                Long homeId = room.getHome().getId();
-//                Long roomId = room.getId();
-//
-//                subFolder = folder.getHome() + "_" + homeId + "/" +
-//                            folder.getRooms() + "_" + roomId;
-//
-//            } else {
-//                throw new IllegalStateException("Room must belong to either a flat or a home.");
-//            }
-//
-//            List<String> imagePaths = imageService.saveImages(images, baseFolder, subFolder);
-//            room.setPicturePaths(imagePaths);
-//            roomRepository.save(room); // update with image paths
-//        }
-//
-//
-//
-//        return "Room saved successfully.";
-//    }
-//
-//    @Override
-//    public RoomDetailsDTO getRoomById(Long id) {
-//        EntityRooms room = roomRepository.findById(id)
-//                .orElseThrow(() -> new RuntimeException("Room not found with id: " + id));
-//
-//        RoomDetailsDTO dto = new RoomDetailsDTO();
-//        dto.setId(room.getId());
-//        dto.setRentalType(room.getRentalType());
-//        dto.setDescription(room.getDescription());
-//        dto.setPrice(room.getPrice());
-//        dto.setRented(room.isRented());
-//        dto.setTenantType(room.getTenantType());
-//
-//        List<String> imageUrls = room.getPicturePaths().stream()
-//                .map(path -> {
-//                    Path p = Paths.get(path);
-//                    String fileName = p.getFileName().toString();
-//                    return room_link + fileName;
-//                }).toList();
-//
-//        dto.setPictureUrls(imageUrls);
-//
-//        return dto;
-//    }
-//
-//    @Override
-//    public List<RoomDetailsDTO> getAllRooms() {
-//        return roomRepository.findAll().stream().map(this::convertToDTO).toList();
-//    }
-//
-//    @Override
-//    public String updateRoom(Long roomId, RoomSaveRequestDTO dto, List<MultipartFile> newImages, List<String> imagesToDelete) throws IOException {
-//        EntityRooms room = roomRepository.findById(roomId)
-//                .orElseThrow(() -> new RuntimeException("Room not found"));
-//
-//        room.setRentalType(dto.getRentalType());
-//        room.setDescription(dto.getDescription());
-//        room.setPrice(dto.getPrice());
-//        room.setRented(dto.isRented());
-//        room.setTenantType(dto.getTenantType());
-//
-//        List<String> updated = imageService.updateImages(
-//                room.getPicturePaths(), imagesToDelete, newImages, folder.getRooms(),
-//                room.getFlat() != null ? "flat_" + room.getFlat().getId() : "home_" + room.getHome().getId()
-//        );
-//        room.setPicturePaths(updated);
-//
-//        roomRepository.save(room);
-//        return "Room updated successfully.";
-//    }
-//
-//
-//    @Override
-//    public String deleteRoom(Long roomId) {
-//        EntityRooms room = roomRepository.findById(roomId)
-//                .orElseThrow(() -> new RuntimeException("Room not found"));
-//
-//        String folderPath;
-//        String baseFolderPath;
-//        Long parentId;
-//
-//        // Build folder structure
-//        if (room.getFlat() != null) {
-//            Long buildingId = room.getFlat().getBuilding().getId();
-//            parentId = room.getFlat().getId();
-//
-//            // e.g., building_3/flat_2/room_10
-//            baseFolderPath = folder.getBuilding() + "_" + buildingId + "/" + folder.getFlat() + "_" + parentId;
-//            folderPath = baseFolderPath + "/" + folder.getRooms() + "_" + room.getId();
-//
-//        } else if (room.getHome() != null) {
-//            parentId = room.getHome().getId();
-//
-//            // e.g., home_5/room_12
-//            baseFolderPath = folder.getHome() + "_" + parentId;
-//            folderPath = baseFolderPath + "/" + folder.getRooms() + "_" + room.getId();
-//
-//        } else {
-//            throw new IllegalStateException("Room must belong to either a flat or a home.");
-//        }
-//
-//        // Step 1: Delete the room's image folder
-//        imageService.deleteAllImages(folder.getRooms(), folderPath);
-//
-//        // Step 2: Delete the room from the database
-//        roomRepository.delete(room);
-//
-//        // Step 3: Check if any rooms remain under the same flat or home
-//        boolean hasRemainingRooms = (room.getFlat() != null)
-//                ? roomRepository.existsByFlatId(parentId)
-//                : roomRepository.existsByHomeId(parentId);
-//
-//        // Step 4: If no rooms left, delete the parent folder
-//        if (!hasRemainingRooms) {
-//            imageService.deleteFolderIfEmpty(folder.getRooms(), baseFolderPath);
-//        }
-//
-//        return "Room with ID " + roomId + " has been deleted.";
-//    }
-//
-//
-//    private RoomDetailsDTO convertToDTO(EntityRooms room) {
-//        RoomDetailsDTO dto = new RoomDetailsDTO();
-//        dto.setId(room.getId());
-//        dto.setRentalType(room.getRentalType());
-//        dto.setDescription(room.getDescription());
-//        dto.setPrice(room.getPrice());
-//        dto.setRented(room.isRented());
-//        dto.setTenantType(room.getTenantType());
-//
-//        List<String> imageUrls = room.getPicturePaths().stream()
-//                .map(path -> {
-//                    Path p = Paths.get(path);
-//                    String fileName = p.getFileName().toString();
-//                    return room_link + fileName;
-//                }).toList();
-//
-//        dto.setPictureUrls(imageUrls);
-//        return dto;
-//    }
-//}

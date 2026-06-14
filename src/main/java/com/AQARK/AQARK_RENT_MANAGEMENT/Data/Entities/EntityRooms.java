@@ -7,11 +7,19 @@ import lombok.*;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name = "rooms")
+@Table(
+        name = "rooms",
+        indexes = {
+                @Index(name = "idx_rooms_building_id", columnList = "building_id"),
+                @Index(name = "idx_rooms_flat_id", columnList = "flat_id"),
+                @Index(name = "idx_rooms_home_id", columnList = "home_id"),
+                @Index(name = "idx_rooms_rented", columnList = "rented")
+        }
+)
 @Getter
 @Setter
-@NoArgsConstructor
 @AllArgsConstructor
+@NoArgsConstructor
 @Builder
 public class EntityRooms {
 
@@ -19,41 +27,79 @@ public class EntityRooms {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String roomName; // Optional: "Room A", "Master Bedroom", etc.
+    @Column(name = "room_number", length = 100, nullable = false)
+    private String roomNumber;
 
-    @Column(name = "room_size")
-    private String size; // e.g., "4x5m", "20 sqm"
+    @Column(name = "room_size", length = 100)
+    private String size;
 
     @Column(name = "rented", nullable = false)
-    private boolean rented = true;
+    private boolean rented = false;
 
-    @Column(name = "tenantType")
+    @Column(name = "tenant_type", length = 50)
     private String tenantType;
 
-    @Column(name = "rentalType")
-    private String rentalType;    //monthly, daily
+    @Column(name = "rent_of_type", length = 50)
+    private String rentTimeType;
 
-    @Column(name = "price")
-    private BigDecimal price; // Optional: if rooms are rented individually
+    @Column(name = "price", precision = 18, scale = 3)
+    private BigDecimal price;
 
+    @Column(name = "has_private_bathroom", nullable = false)
+    private boolean hasPrivateBathroom = false;
 
-    @Column(name = "has_private_bathroom")
-    private boolean hasPrivateBathroom;
+    @Column(name = "has_ac", nullable = false)
+    private boolean hasAC = false;
 
+    @Column(name = "has_wifi", nullable = false)
+    private boolean hasWIFI = false;
+
+    @Column(name = "kitchen", length = 100)
+    private String kitchen;
+
+    @Column(name = "is_furnished", nullable = false)
+    private boolean isFurnished = false;
+
+    @Column(name = "description", length = 1000)
     private String description;
 
-    // One of the following should be populated:
-    @ManyToOne
+    /*
+     * Used only when room belongs to a flat.
+     * This makes building room queries faster and cleaner.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "building_id")
+    private EntityBuildings building;
+
+    /*
+     * Used when room belongs to a flat.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "flat_id")
     private EntityFlats flat;
 
-    @ManyToOne
+    /*
+     * Used when room belongs to a standalone home.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "home_id")
     private EntityHomes home;
 
-    @AssertTrue(message = "Room must belong to either a flat or a home, not both or neither.")//validation to ensure a room belong to flat or home
+    @AssertTrue(
+            message = "Room must belong either to building + flat, or to home only."
+    )
     public boolean isParentValid() {
-        return (flat != null) ^ (home != null); // XOR: one is set, not both
-    }
 
+        boolean belongsToFlat =
+                building != null &&
+                        flat != null &&
+                        home == null;
+
+        boolean belongsToHome =
+                building == null &&
+                        flat == null &&
+                        home != null;
+
+        return belongsToFlat || belongsToHome;
+    }
 }

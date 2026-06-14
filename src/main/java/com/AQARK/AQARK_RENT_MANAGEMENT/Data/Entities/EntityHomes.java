@@ -23,6 +23,9 @@ public class EntityHomes {
     @Column(name = "home_type", nullable = false) //Villa, Duplex, Traditional
     private String homeType;
 
+    @Column(name = "home_number")
+    private String homeNumber;
+
     @Min(1)
     @Column(name = "number_of_rooms", nullable = false)
     private int numberOfRooms;

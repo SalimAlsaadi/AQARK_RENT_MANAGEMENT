@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation.RoomsServicesImpl;
@@ -8,6 +9,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,11 +33,18 @@ public class RoomsController {
             @RequestPart("roomData") String roomData,
             @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures) throws IOException {
 
+
         RoomSaveRequestDTO dto = new ObjectMapper().readValue(roomData, RoomSaveRequestDTO.class);
 
 
         // Then call your roomService.saveRoom(dto);
         return ResponseEntity.ok(roomService.createRoom(dto, pictures));
+    }
+
+    @PostMapping("/getRoomsByBuildingId")
+    public ResponseEntity<List<RoomDetailsDTO>> getRoomsByBuildingId(@RequestBody BuildingIdDTO building){
+
+        return ResponseEntity.ok(roomService.getRoomsByBuildingId(building.getBuildingId()));
     }
 
     @DeleteMapping("/{roomId}")
