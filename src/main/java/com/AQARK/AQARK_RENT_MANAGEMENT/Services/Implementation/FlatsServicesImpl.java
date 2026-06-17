@@ -1,24 +1,21 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.PropertyMediaService;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatDetailsDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatListDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatSaveRequestDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.BuildingRepository;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.FlatsRepository;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserRepository;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.FlatsServicesInterface;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -31,42 +28,48 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     private final BuildingRepository buildingRepository;
     private final RoomRepository roomRepository;
     private final PropertyMediaService propertyMediaService;
+    private final UnitStatusServiceInterface unitStatusService;
 
     @Override
     @Transactional
-    public FlatDetailsDTO createFlat(FlatSaveRequestDTO dto, List<MultipartFile> pictures, Long landlordId) throws IOException {
+    public FlatDetailsDTO createFlat(
+            FlatSaveRequestDTO dto,
+            List<MultipartFile> pictures,
+            Long landlordId
+    ) throws IOException {
 
-        dto.setLandlordId(landlordId);
-        validateCreateRequest(dto);
+        Long finalLandlordId = landlordId != null ? landlordId : dto.getLandlordId();
 
-        EntityUser landlord = userRepository.findById(dto.getLandlordId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Landlord not found with ID: " + dto.getLandlordId()
-                ));
+        validateCreateRequest(dto, finalLandlordId);
 
-        EntityBuildings building = buildingRepository.findById(dto.getBuildingId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Building not found with ID: " + dto.getBuildingId()
-                ));
+        EntityUser landlord = getLandlord(finalLandlordId);
+        EntityBuildings building = getBuilding(dto.getBuildingId());
 
-        EntityFlats flat = new EntityFlats();
+        validateFlatNumberAvailable(
+                building.getId(),
+                dto.getFlatNumber(),
+                null
+        );
 
-        flat.setFlatNumber(dto.getFlat_number());
-        flat.setNumberOfRooms(dto.getNumberOfRooms());
-        flat.setNumberOfBathrooms(dto.getNumberOfBathrooms());
-        flat.setHasLivingRoom(Boolean.TRUE.equals(dto.getHasLivingRoom()));
-        flat.setRented(Boolean.TRUE.equals(dto.getRented()));
-        flat.setFloorNumber(dto.getFloorNumber());
+        EntityUnitStatus status = resolveUnitStatus(dto.getStatusCode());
 
-        flat.setDescription(dto.getDescription());
-        flat.setTenantType(dto.getTenantType());
-        flat.setRentalType(dto.getRentTimeType());
-
-        flat.setPrice(dto.getPrice());
-        flat.setLandlordMobileNumber(dto.getMobileNumber());
-
-        flat.setLandlord(landlord);
-        flat.setBuilding(building);
+        EntityFlats flat = EntityFlats.builder()
+                .flatNumber(cleanRequired(dto.getFlatNumber(), "Flat number is required"))
+                .numberOfRooms(cleanRequired(dto.getNumberOfRooms(), "Number of rooms is required"))
+                .numberOfBathrooms(cleanRequired(dto.getNumberOfBathrooms(), "Number of bathrooms is required"))
+                .hasLivingRoom(Boolean.TRUE.equals(dto.getHasLivingRoom()))
+                .status(status)
+                .floorNumber(cleanRequired(dto.getFloorNumber(), "Floor number is required"))
+                .description(clean(dto.getDescription()))
+                .tenantType(clean(dto.getTenantType()))
+                .rentalType(clean(dto.getRentTimeType()))
+                .price(dto.getPrice())
+                .landlordMobileNumber(clean(dto.getMobileNumber()))
+                .landlord(landlord)
+                .building(building)
+                .active(true)
+                .deleted(false)
+                .build();
 
         EntityFlats savedFlat = flatsRepository.save(flat);
 
@@ -78,42 +81,59 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
             );
         }
 
+        EntityFlats loadedFlat = flatsRepository.findDetailsById(savedFlat.getId());
 
-        return convertToDTO(savedFlat);
+        return toDetailsDTO(loadedFlat);
     }
 
     @Override
     @Transactional
-    public FlatDetailsDTO updateFlat(FlatSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete) throws IOException {
+    public FlatDetailsDTO updateFlat(
+            Long flatId,
+            FlatUpdateRequestDTO dto,
+            List<MultipartFile> newImages,
+            List<Long> imageIdsToDelete
+    ) throws IOException {
 
-        if (dto.getFlatId() == null || dto.getFlatId() <= 0) {
-            throw new IllegalArgumentException("Flat ID is required.");
+        if (flatId == null || flatId <= 0) {
+            throw new IllegalArgumentException("Flat id is required.");
         }
 
-        EntityFlats flat = flatsRepository.findById(dto.getFlatId())
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Flat not found with ID: " + dto.getFlatId()
-                ));
-
-        updateFlatFields(flat, dto);
-
-        if (dto.getLandlordId() != null) {
-            EntityUser landlord = userRepository.findById(dto.getLandlordId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Landlord not found with ID: " + dto.getLandlordId()
-                    ));
-
-            flat.setLandlord(landlord);
+        if (dto == null) {
+            throw new IllegalArgumentException("Flat request body is required.");
         }
 
-        if (dto.getBuildingId() != null) {
-            EntityBuildings building = buildingRepository.findById(dto.getBuildingId())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "Building not found with ID: " + dto.getBuildingId()
-                    ));
+        EntityFlats flat = flatsRepository.findDetailsById(flatId);
 
-            flat.setBuilding(building);
+        if (flat == null) {
+            throw new EntityNotFoundException("Flat not found with id: " + flatId);
         }
+
+        Long finalBuildingId =
+                dto.getBuildingId() != null
+                        ? dto.getBuildingId()
+                        : flat.getBuilding().getId();
+
+        EntityBuildings building = getBuilding(finalBuildingId);
+
+        validateFlatNumberAvailable(
+                building.getId(),
+                dto.getFlatNumber(),
+                flat.getId()
+        );
+
+        flat.setBuilding(building);
+        flat.setFlatNumber(cleanRequired(dto.getFlatNumber(), "Flat number is required"));
+        flat.setNumberOfRooms(cleanRequired(dto.getNumberOfRooms(), "Number of rooms is required"));
+        flat.setNumberOfBathrooms(cleanRequired(dto.getNumberOfBathrooms(), "Number of bathrooms is required"));
+        flat.setHasLivingRoom(Boolean.TRUE.equals(dto.getHasLivingRoom()));
+        flat.setStatus(resolveUnitStatus(dto.getStatusCode()));
+        flat.setFloorNumber(cleanRequired(dto.getFloorNumber(), "Floor number is required"));
+        flat.setDescription(clean(dto.getDescription()));
+        flat.setTenantType(clean(dto.getTenantType()));
+        flat.setRentalType(clean(dto.getRentTimeType()));
+        flat.setPrice(dto.getPrice());
+        flat.setLandlordMobileNumber(clean(dto.getMobileNumber()));
 
         EntityFlats savedFlat = flatsRepository.save(flat);
 
@@ -124,89 +144,96 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
                 newImages
         );
 
-        return convertToDTO(savedFlat);
-    }
+        EntityFlats loadedFlat = flatsRepository.findDetailsById(savedFlat.getId());
 
-    @Override
-    public List<FlatDetailsDTO> getFlatsByBuildingId(BuildingIdDTO buildingIdDTO){
-        List<EntityFlats> flats=flatsRepository.findByBuildingId(buildingIdDTO.getBuildingId());
-
-        return convertListFlatsToDTO(flats);
-    }
-
-
-    @Override
-    public List<FlatListDTO> getFlatsList(BuildingIdDTO buildingId){
-        List<EntityFlats> flats=flatsRepository.findByBuildingId(buildingId.getBuildingId());
-
-        List<FlatListDTO> flatList=new ArrayList<>();
-
-        for(EntityFlats flat : flats){
-            FlatListDTO flatListDTO=new FlatListDTO();
-            flatListDTO.setFlatId(flat.getId());
-            flatListDTO.setFlatNumber(flat.getFlatNumber());
-            flatListDTO.setFloorNumber(flat.getFloorNumber());
-
-            flatList.add(flatListDTO);
-        }
-        return flatList;
+        return toDetailsDTO(loadedFlat);
     }
 
     @Override
     public FlatDetailsDTO getFlatById(Long flatId) {
+        if (flatId == null || flatId <= 0) {
+            throw new IllegalArgumentException("Flat id is required.");
+        }
 
-        EntityFlats flat = flatsRepository.findById(flatId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Flat not found with ID: " + flatId
-                ));
+        EntityFlats flat = flatsRepository.findDetailsById(flatId);
 
-        return convertToDTO(flat);
+        if (flat == null) {
+            throw new EntityNotFoundException("Flat not found with id: " + flatId);
+        }
+
+        return toDetailsDTO(flat);
     }
 
     @Override
     public List<FlatDetailsDTO> getFlatsByBuildingId(Long buildingId) {
-
         if (buildingId == null || buildingId <= 0) {
-            throw new IllegalArgumentException("Building ID is required.");
+            throw new IllegalArgumentException("Building id is required.");
         }
 
-        return flatsRepository.findByBuildingId(buildingId)
+        return flatsRepository.findDetailsByBuildingId(buildingId)
                 .stream()
-                .map(this::convertToDTO)
+                .map(this::toDetailsDTO)
                 .toList();
     }
 
     @Override
     public List<FlatDetailsDTO> getFlatsByLandlordId(Long landlordId) {
-
         if (landlordId == null || landlordId <= 0) {
-            throw new IllegalArgumentException("Landlord ID is required.");
+            throw new IllegalArgumentException("Landlord id is required.");
         }
 
-        return flatsRepository.findByLandlordId(landlordId)
+        return flatsRepository.findDetailsByLandlordId(landlordId)
                 .stream()
-                .map(this::convertToDTO)
+                .map(this::toDetailsDTO)
+                .toList();
+    }
+
+    @Override
+    public List<FlatListDTO> getFlatListByBuildingId(Long buildingId) {
+        if (buildingId == null || buildingId <= 0) {
+            throw new IllegalArgumentException("Building id is required.");
+        }
+
+        return flatsRepository.findDetailsByBuildingId(buildingId)
+                .stream()
+                .map(this::toListDTO)
+                .toList();
+    }
+
+    @Override
+    public List<FlatDetailsDTO> searchFlats(FlatSearchRequestDTO filter) {
+        if (filter == null) {
+            filter = new FlatSearchRequestDTO();
+        }
+
+        return flatsRepository.searchFlats(filter)
+                .stream()
+                .map(this::toDetailsDTO)
                 .toList();
     }
 
     @Override
     @Transactional
     public void deleteFlat(Long flatId) {
+        if (flatId == null || flatId <= 0) {
+            throw new IllegalArgumentException("Flat id is required.");
+        }
 
-        EntityFlats flat = flatsRepository.findById(flatId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Flat not found with ID: " + flatId
-                ));
+        EntityFlats flat = flatsRepository.findDetailsById(flatId);
 
-        if (flat.getRooms() != null && !flat.getRooms().isEmpty()) {
-            for (EntityRooms room : flat.getRooms()) {
-                propertyMediaService.softDeleteAllImages(
-                        MediaOwnerType.ROOM,
-                        room.getId()
-                );
+        if (flat == null) {
+            throw new EntityNotFoundException("Flat not found with id: " + flatId);
+        }
 
-                roomRepository.delete(room);
-            }
+        long roomsCount =
+                flat.getRooms() == null
+                        ? 0
+                        : flat.getRooms().size();
+
+        if (roomsCount > 0) {
+            throw new IllegalStateException(
+                    "Cannot delete flat because it has rooms. Delete or move rooms first."
+            );
         }
 
         propertyMediaService.softDeleteAllImages(
@@ -214,58 +241,116 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
                 flat.getId()
         );
 
-        flatsRepository.delete(flat);
+        flat.setDeleted(true);
+        flat.setActive(false);
+        flat.setDeletedAt(LocalDateTime.now());
+
+        flatsRepository.save(flat);
     }
 
-    private void updateFlatFields(
-            EntityFlats flat,
-            FlatSaveRequestDTO dto
+    private EntityUser getLandlord(Long landlordId) {
+        return userRepository.findById(landlordId)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Landlord not found with id: " + landlordId
+                ));
+    }
+
+    private EntityBuildings getBuilding(Long buildingId) {
+        return buildingRepository.findById(buildingId)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Building not found with id: " + buildingId
+                ));
+    }
+
+    private EntityUnitStatus resolveUnitStatus(String statusCode) {
+        if (statusCode == null || statusCode.isBlank()) {
+            return unitStatusService.getDefaultUnitStatus();
+        }
+
+        return unitStatusService.getRequiredStatus(
+                StatusDomain.UNIT,
+                statusCode
+        );
+    }
+
+    private void validateCreateRequest(FlatSaveRequestDTO dto, Long landlordId) {
+        if (dto == null) {
+            throw new IllegalArgumentException("Flat request body is required.");
+        }
+
+        if (landlordId == null || landlordId <= 0) {
+            throw new IllegalArgumentException("Landlord id is required.");
+        }
+
+        if (dto.getBuildingId() == null || dto.getBuildingId() <= 0) {
+            throw new IllegalArgumentException("Building id is required.");
+        }
+
+        if (isBlank(dto.getFlatNumber())) {
+            throw new IllegalArgumentException("Flat number is required.");
+        }
+
+        if (isBlank(dto.getNumberOfRooms())) {
+            throw new IllegalArgumentException("Number of rooms is required.");
+        }
+
+        if (isBlank(dto.getNumberOfBathrooms())) {
+            throw new IllegalArgumentException("Number of bathrooms is required.");
+        }
+
+        if (isBlank(dto.getFloorNumber())) {
+            throw new IllegalArgumentException("Floor number is required.");
+        }
+
+        if (dto.getPrice() == null) {
+            throw new IllegalArgumentException("Price is required.");
+        }
+
+        if (dto.getPrice().signum() < 0) {
+            throw new IllegalArgumentException("Price cannot be negative.");
+        }
+    }
+
+    private void validateFlatNumberAvailable(
+            Long buildingId,
+            String flatNumber,
+            Long currentFlatId
     ) {
+        String cleanedFlatNumber = cleanRequired(flatNumber, "Flat number is required");
 
-        if (dto.getNumberOfRooms() != null) {
-            flat.setNumberOfRooms(dto.getNumberOfRooms());
+        boolean exists = flatsRepository
+                .existsByBuildingIdAndFlatNumberIgnoreCaseAndDeletedFalse(
+                        buildingId,
+                        cleanedFlatNumber
+                );
+
+        if (!exists) {
+            return;
         }
 
-        if (dto.getNumberOfBathrooms() != null) {
-            flat.setNumberOfBathrooms(dto.getNumberOfBathrooms());
+        if (currentFlatId == null) {
+            throw new IllegalStateException(
+                    "Flat number already exists in this building: " + cleanedFlatNumber
+            );
         }
 
-        if (dto.getHasLivingRoom() != null) {
-            flat.setHasLivingRoom(dto.getHasLivingRoom());
+        EntityFlats current = flatsRepository.findDetailsById(currentFlatId);
+
+        if (
+                current != null
+                        && current.getBuilding() != null
+                        && current.getBuilding().getId().equals(buildingId)
+                        && current.getFlatNumber().equalsIgnoreCase(cleanedFlatNumber)
+        ) {
+            return;
         }
 
-        if (dto.getRented() != null) {
-            flat.setRented(dto.getRented());
-        }
-
-        if (dto.getFloorNumber() != null) {
-            flat.setFloorNumber(dto.getFloorNumber());
-        }
-
-        if (dto.getDescription() != null) {
-            flat.setDescription(dto.getDescription());
-        }
-
-        if (dto.getTenantType() != null) {
-            flat.setTenantType(dto.getTenantType());
-        }
-
-        if (dto.getRentTimeType() != null) {
-            flat.setRentalType(dto.getRentTimeType());
-        }
-
-        if (dto.getPrice() != null) {
-            flat.setPrice(dto.getPrice());
-        }
-
-        if (dto.getMobileNumber() != null) {
-            flat.setLandlordMobileNumber(dto.getMobileNumber());
-        }
-
+        throw new IllegalStateException(
+                "Flat number already exists in this building: " + cleanedFlatNumber
+        );
     }
 
-    private FlatDetailsDTO convertToDTO(EntityFlats flat) {
-
+    private FlatDetailsDTO toDetailsDTO(EntityFlats flat) {
         EntityBuildings building = flat.getBuilding();
         EntityUser landlord = flat.getLandlord();
 
@@ -277,38 +362,78 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
         return FlatDetailsDTO.builder()
                 .id(flat.getId())
-
                 .flatNumber(flat.getFlatNumber())
                 .numberOfRooms(flat.getNumberOfRooms())
                 .numberOfBathrooms(flat.getNumberOfBathrooms())
                 .hasLivingRoom(flat.isHasLivingRoom())
-                .rented(flat.isRented())
+                .status(toStatusDTO(flat.getStatus()))
                 .floorNumber(flat.getFloorNumber())
-
                 .description(flat.getDescription())
-                .region(flat.getBuilding().getRegion())
-                .wilaya(flat.getBuilding().getWilaya())
-                .area(flat.getBuilding().getArea())
-                .tenantType(flat.getTenantType())
-                .rentTimeType(flat.getRentalType())
 
-                .price(flat.getPrice())
-
-                .latitude(flat.getBuilding().getLatitude())
-                .longitude(flat.getBuilding().getLongitude())
-
-                .landlordId(landlord != null ? landlord.getId() : null)
-                .landlordName(
-                        landlord != null
-                                ? landlord.getFirstName() + " " + landlord.getLastName()
+                .regionId(
+                        building != null && building.getRegion() != null
+                                ? building.getRegion().getId()
                                 : null
                 )
+                .region(
+                        building != null && building.getRegion() != null
+                                ? building.getRegion().getNameEn()
+                                : null
+                )
+                .regionAr(
+                        building != null && building.getRegion() != null
+                                ? building.getRegion().getNameAr()
+                                : null
+                )
+
+                .wilayaId(
+                        building != null && building.getWilaya() != null
+                                ? building.getWilaya().getId()
+                                : null
+                )
+                .wilaya(
+                        building != null && building.getWilaya() != null
+                                ? building.getWilaya().getNameEn()
+                                : null
+                )
+                .wilayaAr(
+                        building != null && building.getWilaya() != null
+                                ? building.getWilaya().getNameAr()
+                                : null
+                )
+
+                .areaId(
+                        building != null && building.getArea() != null
+                                ? building.getArea().getId()
+                                : null
+                )
+                .area(
+                        building != null && building.getArea() != null
+                                ? building.getArea().getNameEn()
+                                : null
+                )
+                .areaAr(
+                        building != null && building.getArea() != null
+                                ? building.getArea().getNameAr()
+                                : null
+                )
+
+                .tenantType(flat.getTenantType())
+                .rentTimeType(flat.getRentalType())
+                .price(flat.getPrice())
+
+                .latitude(building != null ? building.getLatitude() : null)
+                .longitude(building != null ? building.getLongitude() : null)
+
+                .landlordId(landlord != null ? landlord.getId() : null)
+                .landlordName(getLandlordName(landlord))
                 .landlordPhoneNumber(
                         landlord != null ? landlord.getPhoneNumber() : null
                 )
 
                 .buildingId(building != null ? building.getId() : null)
                 .buildingName(building != null ? building.getBuildingName() : null)
+                .buildingNumber(building != null ? building.getBuildingNumber() : null)
 
                 .hasParking(building != null ? building.isHasParking() : null)
                 .hasGym(building != null ? building.isHasGym() : null)
@@ -318,108 +443,74 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
                 .build();
     }
 
-    private List<FlatDetailsDTO> convertListFlatsToDTO(List<EntityFlats> flats){
+    private FlatListDTO toListDTO(EntityFlats flat) {
+        EntityUnitStatus status = flat.getStatus();
 
-        List<FlatDetailsDTO> flatList=new ArrayList<>();
-
-        for(EntityFlats flat : flats){
-            FlatDetailsDTO flatDetails=new FlatDetailsDTO();
-
-            flatDetails.setId(flat.getId());
-            flatDetails.setFlatNumber(flat.getFlatNumber());
-            flatDetails.setFloorNumber(flat.getFloorNumber());
-            flatDetails.setNumberOfRooms(flat.getNumberOfRooms());
-            flatDetails.setNumberOfBathrooms(flat.getNumberOfBathrooms());
-            flatDetails.setHasLivingRoom(flat.isHasLivingRoom());
-            flatDetails.setBuildingId(flat.getBuilding().getId());
-            flatDetails.setBuildingName(flat.getBuilding().getBuildingName());
-            flatDetails.setHasGym(flat.getBuilding().isHasGym());
-            flatDetails.setHasParking(flat.getBuilding().isHasParking());
-            flatDetails.setHasSwimmingPool(flat.getBuilding().isHasSwimmingPool());
-            flatDetails.setRegion(flat.getBuilding().getRegion());
-            flatDetails.setWilaya(flat.getBuilding().getWilaya());
-            flatDetails.setArea(flat.getBuilding().getArea());
-            flatDetails.setLatitude(flat.getBuilding().getLatitude());
-            flatDetails.setLongitude(flat.getBuilding().getLongitude());
-            flatDetails.setDescription(flat.getDescription());
-            flatDetails.setLandlordId(flat.getLandlord().getId());
-            flatDetails.setLandlordName(flat.getLandlord().getFirstName()+ " " + flat.getLandlord().getLastName());
-            flatDetails.setLandlordPhoneNumber(flat.getLandlord().getPhoneNumber());
-            flatDetails.setRented(flat.isRented());
-            flatDetails.setRentTimeType(flat.getRentalType());
-            flatDetails.setTenantType(flat.getTenantType());
-            flatDetails.setPrice(flat.getPrice());
-
-            List<String> imageUrls = propertyMediaService
-                    .getImages(MediaOwnerType.FLAT, flat.getId())
-                    .stream()
-                    .map(PropertyMediaDTO::getFileUrl)
-                    .toList();
-
-            flatDetails.setImages(imageUrls);
-            flatList.add(flatDetails);
-        }
-
-        return flatList;
-    }
-    private void validateCreateRequest(FlatSaveRequestDTO dto) {
-
-        if (dto == null) {
-            throw new IllegalArgumentException("Flat request body is required.");
-        }
-
-        if (dto.getLandlordId() == null || dto.getLandlordId() <= 0) {
-            throw new IllegalArgumentException("Landlord ID is required.");
-        }
-
-        if (dto.getBuildingId() == null || dto.getBuildingId() <= 0) {
-            throw new IllegalArgumentException("Building ID is required.");
-        }
-
-        if (dto.getNumberOfRooms() == null || dto.getNumberOfRooms().isEmpty() ) {
-            throw new IllegalArgumentException("Number of rooms must be at least 1.");
-        }
-
-        if (dto.getNumberOfBathrooms() == null || dto.getNumberOfBathrooms().isEmpty()) {
-            throw new IllegalArgumentException("Number of bathrooms must be at least 1.");
-        }
-
-        if (dto.getFloorNumber() == null || dto.getFloorNumber().isEmpty()) {
-            throw new IllegalArgumentException("Floor number is required.");
-        }
-
-        if (dto.getPrice() == null) {
-            throw new IllegalArgumentException("Price is required.");
-        }
+        return FlatListDTO.builder()
+                .flatId(flat.getId())
+                .flatNumber(flat.getFlatNumber())
+                .floorNumber(flat.getFloorNumber())
+                .numberOfRooms(flat.getNumberOfRooms())
+                .numberOfBathrooms(flat.getNumberOfBathrooms())
+                .price(flat.getPrice())
+                .statusCode(status != null ? status.getCode() : null)
+                .statusNameEn(status != null ? status.getNameEn() : null)
+                .statusNameAr(status != null ? status.getNameAr() : null)
+                .statusColorCode(status != null ? status.getColorCode() : null)
+                .statusIcon(status != null ? status.getIcon() : null)
+                .build();
     }
 
+    private FlatStatusDTO toStatusDTO(EntityUnitStatus status) {
+        if (status == null) {
+            return null;
+        }
 
+        return FlatStatusDTO.builder()
+                .id(status.getId())
+                .statusDomain(status.getStatusDomain())
+                .code(status.getCode())
+                .nameEn(status.getNameEn())
+                .nameAr(status.getNameAr())
+                .colorCode(status.getColorCode())
+                .icon(status.getIcon())
+                .build();
+    }
 
+    private String getLandlordName(EntityUser landlord) {
+        if (landlord == null) {
+            return null;
+        }
+
+        String firstName = landlord.getFirstName() == null ? "" : landlord.getFirstName().trim();
+        String lastName = landlord.getLastName() == null ? "" : landlord.getLastName().trim();
+
+        String fullName = (firstName + " " + lastName).trim();
+
+        return fullName.isEmpty() ? null : fullName;
+    }
+
+    private String cleanRequired(String value, String message) {
+        String cleaned = clean(value);
+
+        if (cleaned == null) {
+            throw new IllegalArgumentException(message);
+        }
+
+        return cleaned;
+    }
+
+    private String clean(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String cleaned = value.trim();
+
+        return cleaned.isEmpty() ? null : cleaned;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
 }
-
-//    public EntityFlats convertToEntity(FlatSaveRequestDTO dto) {
-//        EntityFlats flat = new EntityFlats();
-//
-//        flat.setId(dto.getFlatID());
-//        flat.setNumberOfRooms((dto.getNumberOfRooms()));
-//        flat.setNumberOfBathrooms(dto.getNumberOfBathrooms());
-//        flat.setHasLivingRoom(dto.getHasLivingRoom());
-//        flat.setRented(dto.isRented());
-//        flat.setFloorNumber(dto.getFloorNumber());
-//        flat.setDescription(dto.getDescription());
-//        flat.setRegion(dto.getRegion());
-//        flat.setWilaya(dto.getWilaya());
-//        flat.setTenantType(dto.getTenantType());
-//        flat.setRentalType(dto.getRentTimeType());
-//        flat.setPrice(dto.getPrice());
-//        flat.setLatitude(dto.getLatitude());
-//        flat.setLongitude(dto.getLongitude());
-//        flat.setLandlord(dto.getLandlordId());
-//        flat.setBuilding(dto.getBuildingId());
-//        flat.setLandlordMobileNumber(dto.getMobileNumber());
-//
-//        return flat;
-//    }
-
-
-

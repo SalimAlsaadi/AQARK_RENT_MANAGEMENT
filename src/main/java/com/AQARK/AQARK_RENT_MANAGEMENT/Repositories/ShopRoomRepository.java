@@ -2,14 +2,24 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Repositories;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityShoproom;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
-@Repository
+import java.util.List;
+
 public interface ShopRoomRepository extends JpaRepository<EntityShoproom, Long> {
 
-    int countByBuildingId(Long buildingId);
+    List<EntityShoproom> findByBuildingIdAndDeletedFalseOrderByShopNumberAsc(
+            Long buildingId
+    );
 
-    int countByBuildingIdAndRentedTrue(Long buildingId);
+    long countByBuildingIdAndDeletedFalse(Long buildingId);
 
-    int countByBuildingIdAndRentedFalse(Long buildingId);
+    long countByBuildingIdAndStatusCodeIgnoreCaseAndDeletedFalse(
+            Long buildingId,
+            String statusCode
+    );
+
+    boolean existsByBuildingIdAndShopNumberIgnoreCaseAndDeletedFalse(
+            Long buildingId,
+            String shopNumber
+    );
 }

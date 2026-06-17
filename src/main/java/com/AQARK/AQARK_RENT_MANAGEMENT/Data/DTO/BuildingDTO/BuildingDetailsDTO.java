@@ -1,9 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.util.List;
 
@@ -11,26 +8,29 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class BuildingDetailsDTO {
+
     private Long id;
+
     private String buildingName;
-    private String region;
-    private String wilaya;
-    private String area;
-    private int flatsRented;
-    private int flatsNotRented;
-    private int roomsRented;
-    private int roomsNotRented;
-    private int shopsRented;
-    private int shopsNotRented;
-    private int numberOfFloors;
-    private boolean hasParking;
-    private boolean hasGym;
-    private boolean hasSwimmingPool;
+    private String buildingNumber;
+
+    private String numberOfFloors;
+
+    private BuildingStatusDTO status;
+
+    private BuildingLocationDTO location;
+
+    private BuildingFeaturesDTO features;
+
+    private BuildingUnitCountsDTO unitCounts;
+
     private String description;
-    private Double latitude;
-    private Double longitude;
-    private String landlordName; // e.g., "Salim Al Saadi"
-    private String landLordMobileNumber;
-    private List<String> pictureUrls; // image URLs instead of paths
+
+    private Long landlordId;
+    private String landlordName;
+    private String landlordMobileNumber;
+
+    private List<String> pictureUrls;
 }

@@ -22,7 +22,7 @@ public class HomeSaveRequestDTO {
 
     private Boolean hasLivingRoom;
     private Boolean furnished;
-    private Boolean rented;
+    private Long statusId;
 
     private Integer floorNumber;
     private String description;

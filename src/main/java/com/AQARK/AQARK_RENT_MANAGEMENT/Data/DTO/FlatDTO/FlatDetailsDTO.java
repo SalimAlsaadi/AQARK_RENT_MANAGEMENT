@@ -1,6 +1,5 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -19,13 +18,25 @@ public class FlatDetailsDTO {
     private String numberOfRooms;
     private String numberOfBathrooms;
     private Boolean hasLivingRoom;
-    private Boolean rented;
+
+    private FlatStatusDTO status;
+
     private String floorNumber;
 
     private String description;
+
+    private Long regionId;
     private String region;
+    private String regionAr;
+
+    private Long wilayaId;
     private String wilaya;
+    private String wilayaAr;
+
+    private Long areaId;
     private String area;
+    private String areaAr;
+
     private String tenantType;
     private String rentTimeType;
 
@@ -40,8 +51,8 @@ public class FlatDetailsDTO {
 
     private Long buildingId;
     private String buildingName;
+    private String buildingNumber;
 
-    // From building only, not saved in flat table
     private Boolean hasParking;
     private Boolean hasGym;
     private Boolean hasSwimmingPool;

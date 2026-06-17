@@ -1,6 +1,5 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -18,7 +17,8 @@ public class RoomDetailsDTO {
     private String roomNumber;
     private String size;
 
-    private Boolean rented;
+    private RoomStatusDTO status;
+
     private String tenantType;
     private String rentTimeType;
 
@@ -30,25 +30,35 @@ public class RoomDetailsDTO {
     private Boolean isFurnished;
 
     private String kitchen;
-
     private String description;
 
-    private String region;  //will take region from building or home
-    private String wilaya; //will take wilaya from building or home
-    private String area;  //will take area from building or home
+    private Long regionId;
+    private String region;
+    private String regionAr;
 
-    private Double latitude; //will take latitude from building or home
-    private Double longitude; //will take longitude from building or home
+    private Long wilayaId;
+    private String wilaya;
+    private String wilayaAr;
+
+    private Long areaId;
+    private String area;
+    private String areaAr;
+
+    private Double latitude;
+    private Double longitude;
 
     private Boolean fromFlat;
+    private Boolean fromHome;
 
     private Long flatId;
     private Long homeId;
     private Long buildingId;
 
     private String buildingName;
+    private String buildingNumber;
+
     private String flatLabel;
     private String homeLabel;
 
-    private List<PropertyMediaDTO> images;
+    private List<String> images;
 }

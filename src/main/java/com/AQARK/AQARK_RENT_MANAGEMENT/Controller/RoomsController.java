@@ -1,55 +1,97 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation.RoomsServicesImpl;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/rooms")
+@RequiredArgsConstructor
 public class RoomsController {
 
-    RoomsServicesInterface roomService;
+    private final RoomsServicesInterface roomService;
+    private final ObjectMapper objectMapper;
 
-    @Autowired
-    public RoomsController(RoomsServicesImpl roomService){
-        this.roomService=roomService;
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public RoomDetailsDTO createRoom(@RequestPart("room") String roomJson, @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures) throws IOException {
+
+        RoomSaveRequestDTO dto = objectMapper.readValue(roomJson, RoomSaveRequestDTO.class);
+
+        return roomService.createRoom(
+                dto,
+                safeFiles(pictures)
+        );
     }
 
-    @PostMapping(value = "/save", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<RoomDetailsDTO> createRoom(
-            @RequestPart("roomData") String roomData,
-            @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures) throws IOException {
+    @PutMapping(value = "/updateRoom", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public RoomDetailsDTO updateRoom(@RequestBody RoomIdDTO room, @RequestPart("room") String roomJson,
+            @RequestPart(value = "newPictures", required = false) List<MultipartFile> newPictures,
+            @RequestPart(value = "imagesToDelete", required = false) String imagesToDeleteJson
+    ) throws IOException {
 
+        RoomSaveRequestDTO dto = objectMapper.readValue(roomJson, RoomSaveRequestDTO.class);
 
-        RoomSaveRequestDTO dto = new ObjectMapper().readValue(roomData, RoomSaveRequestDTO.class);
+        List<Long> imagesToDelete = parseIds(imagesToDeleteJson);
 
-
-        // Then call your roomService.saveRoom(dto);
-        return ResponseEntity.ok(roomService.createRoom(dto, pictures));
+        return roomService.updateRoom(room.getRoomId(), dto, safeFiles(newPictures), imagesToDelete);
     }
 
-    @PostMapping("/getRoomsByBuildingId")
-    public ResponseEntity<List<RoomDetailsDTO>> getRoomsByBuildingId(@RequestBody BuildingIdDTO building){
-
-        return ResponseEntity.ok(roomService.getRoomsByBuildingId(building.getBuildingId()));
+    @PostMapping("/getRoomById")
+    public RoomDetailsDTO getRoomById(@RequestBody RoomIdDTO room) {
+        return roomService.getRoomById(room.getRoomId());
     }
 
-    @DeleteMapping("/{roomId}")
-    public void deleteRoomById(@PathVariable Long roomId){
-       roomService.deleteRoom(roomId) ;
+    @GetMapping
+    public List<RoomDetailsDTO> getAllRooms() {
+        return roomService.getAllRooms();
     }
 
+    @PostMapping("getRoomsByBuildingId")
+    public List<RoomDetailsDTO> getRoomsByBuildingId(@RequestBody BuildingIdDTO building) {
+        return roomService.getRoomsByBuildingId(building.getBuildingId());
+    }
+
+    @PostMapping("getRoomsByFlatId")
+    public List<RoomDetailsDTO> getRoomsByFlatId(@RequestBody FlatIdDTO flat) {
+        return roomService.getRoomsByFlatId(flat.getFlatId());
+    }
+
+    @GetMapping("/home/{homeId}")
+    public List<RoomDetailsDTO> getRoomsByHomeId(
+            @PathVariable Long homeId
+    ) {
+        return roomService.getRoomsByHomeId(homeId);
+    }
+
+    @DeleteMapping("/deleteRoomById")
+    public void deleteRoomById(@PathVariable Long roomId) {
+        roomService.deleteRoom(roomId);
+    }
+
+    private List<MultipartFile> safeFiles(List<MultipartFile> files) {
+        return files == null ? Collections.emptyList() : files;
+    }
+
+    private List<Long> parseIds(String json) throws IOException {
+        if (json == null || json.trim().isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return objectMapper.readValue(
+                json,
+                objectMapper.getTypeFactory().constructCollectionType(List.class, Long.class)
+        );
+    }
 }

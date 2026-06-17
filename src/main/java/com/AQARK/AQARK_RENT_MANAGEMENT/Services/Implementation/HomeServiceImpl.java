@@ -54,7 +54,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
 
         home.setHasLivingRoom(Boolean.TRUE.equals(dto.getHasLivingRoom()));
         home.setFurnished(Boolean.TRUE.equals(dto.getFurnished()));
-        home.setRented(Boolean.TRUE.equals(dto.getRented()));
+        //home.setRented(Boolean.TRUE.equals(dto.getRented()));
 
         home.setFloorNumber(dto.getFloorNumber());
         home.setDescription(dto.getDescription());
@@ -168,7 +168,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
                         "Home not found with ID: " + homeId
                 ));
 
-        List<EntityRooms> rooms = roomRepository.findByHomeId(homeId);
+        List<EntityRooms> rooms = roomRepository.findDetailsByHomeId(homeId);
 
         if (rooms != null && !rooms.isEmpty()) {
             for (EntityRooms room : rooms) {
@@ -211,9 +211,9 @@ public class HomeServiceImpl implements HomeServiceInterface {
             home.setFurnished(dto.getFurnished());
         }
 
-        if (dto.getRented() != null) {
-            home.setRented(dto.getRented());
-        }
+//        if (dto.getRented() != null) {
+//            home.setRented(dto.getRented());
+//        }
 
         if (dto.getFloorNumber() != null) {
             home.setFloorNumber(dto.getFloorNumber());

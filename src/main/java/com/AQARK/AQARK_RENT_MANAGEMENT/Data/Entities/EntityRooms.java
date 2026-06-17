@@ -5,15 +5,18 @@ import jakarta.validation.constraints.AssertTrue;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(
         name = "rooms",
+        schema = "app_root",
         indexes = {
-                @Index(name = "idx_rooms_building_id", columnList = "building_id"),
-                @Index(name = "idx_rooms_flat_id", columnList = "flat_id"),
-                @Index(name = "idx_rooms_home_id", columnList = "home_id"),
-                @Index(name = "idx_rooms_rented", columnList = "rented")
+                @Index(name = "IX_rooms_building_id", columnList = "building_id"),
+                @Index(name = "IX_rooms_flat_id", columnList = "flat_id"),
+                @Index(name = "IX_rooms_home_id", columnList = "home_id"),
+                @Index(name = "IX_rooms_status_id", columnList = "status_id"),
+                @Index(name = "IX_rooms_active_deleted", columnList = "active, deleted")
         }
 )
 @Getter
@@ -33,8 +36,9 @@ public class EntityRooms {
     @Column(name = "room_size", length = 100)
     private String size;
 
-    @Column(name = "rented", nullable = false)
-    private boolean rented = false;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "status_id", nullable = false)
+    private EntityUnitStatus status;
 
     @Column(name = "tenant_type", length = 50)
     private String tenantType;
@@ -63,33 +67,35 @@ public class EntityRooms {
     @Column(name = "description", length = 1000)
     private String description;
 
-    /*
-     * Used only when room belongs to a flat.
-     * This makes building room queries faster and cleaner.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "building_id")
     private EntityBuildings building;
 
-    /*
-     * Used when room belongs to a flat.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "flat_id")
     private EntityFlats flat;
 
-    /*
-     * Used when room belongs to a standalone home.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "home_id")
     private EntityHomes home;
 
-    @AssertTrue(
-            message = "Room must belong either to building + flat, or to home only."
-    )
-    public boolean isParentValid() {
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
 
+    @Column(name = "deleted", nullable = false)
+    private boolean deleted = false;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @AssertTrue(message = "Room must belong either to building + flat, or to home only.")
+    public boolean isParentValid() {
         boolean belongsToFlat =
                 building != null &&
                         flat != null &&
@@ -101,5 +107,25 @@ public class EntityRooms {
                         home != null;
 
         return belongsToFlat || belongsToHome;
+    }
+
+
+    //later i will use BaseEntity instead this
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+
+        if (this.roomNumber != null) {
+            this.roomNumber = this.roomNumber.trim();
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+
+        if (this.roomNumber != null) {
+            this.roomNumber = this.roomNumber.trim();
+        }
     }
 }

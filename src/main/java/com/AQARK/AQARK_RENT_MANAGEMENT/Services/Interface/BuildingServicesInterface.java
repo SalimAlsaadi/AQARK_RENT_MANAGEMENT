@@ -1,8 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingDetailsDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingSaveRequestDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityBuildings;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -10,15 +8,23 @@ import java.util.List;
 
 public interface BuildingServicesInterface {
 
-    BuildingDetailsDTO createBuilding(BuildingSaveRequestDTO building, List<MultipartFile> pictures, Long landlod) throws IOException;
+    BuildingDetailsDTO createBuilding(
+            BuildingSaveRequestDTO dto,
+            List<MultipartFile> pictures,
+            Long landlordId
+    ) throws IOException;
 
     BuildingDetailsDTO getBuildingById(Long id);
 
-    List<EntityBuildings> getAllBuildings();
+    List<BuildingListDTO> getBuildingsByLandlordId(Long landlordId);
 
-    BuildingDetailsDTO updateBuilding(BuildingDetailsDTO updatedBuilding, List<Long> picturesToDelete, List<MultipartFile> newPictures) throws IOException;
+    List<BuildingListDTO> getAllBuildings();
 
-    List<BuildingDetailsDTO> getBuildingByLandlordID(Long landlordId) throws IOException;
+    BuildingDetailsDTO updateBuilding(
+            BuildingUpdateRequestDTO dto,
+            List<Long> picturesToDelete,
+            List<MultipartFile> newPictures
+    ) throws IOException;
 
-    //void deleteBuilding(Long id);
+    void softDeleteBuilding(Long buildingId);
 }
