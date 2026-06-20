@@ -12,7 +12,6 @@ import java.util.List;
 @Entity
 @Table(
         name = "buildings",
-        schema = "app_root",
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "UQ_buildings_landlord_building_number",

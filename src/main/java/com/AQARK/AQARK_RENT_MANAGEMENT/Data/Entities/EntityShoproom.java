@@ -9,7 +9,6 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
         name = "shop_rooms",
-        schema = "app_root",
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "UQ_shop_rooms_building_shop_number",

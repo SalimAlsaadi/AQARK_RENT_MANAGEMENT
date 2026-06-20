@@ -31,3 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Secrets & private keys (do not commit) ###
+.env
+**/.env
+src/main/resources/keystore/*.p12
+docker/certs/*.key
+docker/certs/*-key.pem

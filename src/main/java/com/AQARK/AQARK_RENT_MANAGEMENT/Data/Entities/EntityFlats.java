@@ -11,7 +11,6 @@ import java.util.List;
 @Entity
 @Table(
         name = "entity_flats",
-        schema = "app_root",
         indexes = {
                 @Index(name = "IX_entity_flats_building_id", columnList = "building_id"),
                 @Index(name = "IX_entity_flats_landlord_id", columnList = "landlord_id"),

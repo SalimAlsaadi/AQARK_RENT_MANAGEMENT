@@ -32,7 +32,7 @@ public class UserController {
     }
 
     @PostMapping("/getAllUsers")
-    @PreAuthorize("hasRole('AQARK_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UserDTO>> getAllUsers() {
 
         log.info("Fetching all users");
@@ -88,13 +88,13 @@ public class UserController {
 
 
     @PutMapping("/updateUserDetailsByAdmin")
-    @PreAuthorize("hasRole('AQARK_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> updateUserByAdmin(@RequestBody UpdateUserDetailsDTO updateUserDetailsDTO) {
         return ResponseEntity.ok(userServices.updateUserByAdmin(updateUserDetailsDTO));
     }
 
     @DeleteMapping("/deleteUserByID")
-    @PreAuthorize("hasRole('AQARK_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteUser(@RequestBody UserIdDTO userId) {
         log.info("Delete user requested for userId= "+userId);
 
