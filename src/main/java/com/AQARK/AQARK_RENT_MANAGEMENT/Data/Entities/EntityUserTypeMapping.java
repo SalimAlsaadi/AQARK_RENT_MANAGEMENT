@@ -8,7 +8,6 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
         name = "user_user_types",
-        schema = "app_root",
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "UK_user_user_types_user_type",

@@ -9,8 +9,8 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserTypeMappingRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserTypeRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UserServicesInterface;
 import jakarta.persistence.EntityNotFoundException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
@@ -22,13 +22,22 @@ import java.util.Set;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class UserServicesImpl implements UserServicesInterface {
 
     private final UserRepository userRepository;
-    private final WebClient webClient;
+    private final WebClient keycloakWebClient;
     private final UserTypeRepository userTypeRepository;
     private final UserTypeMappingRepository userTypeMappingRepository;
+
+    public UserServicesImpl(UserRepository userRepository,
+                            @Qualifier("keycloakWebClient") WebClient keycloakWebClient,
+                            UserTypeRepository userTypeRepository,
+                            UserTypeMappingRepository userTypeMappingRepository) {
+        this.userRepository = userRepository;
+        this.keycloakWebClient = keycloakWebClient;
+        this.userTypeRepository = userTypeRepository;
+        this.userTypeMappingRepository = userTypeMappingRepository;
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -177,7 +186,7 @@ public class UserServicesImpl implements UserServicesInterface {
             request.setRoles(Set.of("PUBLIC_USER"));
             request.setAllowedClientIds(Set.of("AQARK-client"));
 
-            ApiResponseDTO<Long> response = webClient.post()
+            ApiResponseDTO<Long> response = keycloakWebClient.post()
                     .uri("https://localhost:9443/api/admin/users/service")
                     .bodyValue(request)
                     .retrieve()
@@ -207,7 +216,7 @@ public class UserServicesImpl implements UserServicesInterface {
             request.setRoles("PUBLIC_USER");
             request.setAllowedClientIds("AQARK-client");
 
-            ApiResponseDTO<Long> response = webClient.put()
+            ApiResponseDTO<Long> response = keycloakWebClient.put()
                     .uri("https://localhost:9443/api/admin/users/service")
                     .bodyValue(request)
                     .retrieve()
