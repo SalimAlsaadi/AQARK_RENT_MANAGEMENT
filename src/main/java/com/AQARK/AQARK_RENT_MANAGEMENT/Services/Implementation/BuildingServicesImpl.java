@@ -52,7 +52,7 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
         if (pictures != null && !pictures.isEmpty()) {
             propertyMediaService.saveImages(
                     pictures,
-                    MediaOwnerType.BUILDING,
+                    PropertyType.BUILDING,
                     savedBuilding.getId()
             );
         }
@@ -127,7 +127,7 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
         existing.setLongitude(dto.getLongitude());
 
         propertyMediaService.updateImages(
-                MediaOwnerType.BUILDING,
+                PropertyType.BUILDING,
                 existing.getId(),
                 picturesToDelete,
                 newPictures
@@ -440,7 +440,7 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
 
     private List<String> getPictureUrls(Long buildingId) {
         return propertyMediaService
-                .getImages(MediaOwnerType.BUILDING, buildingId)
+                .getImages(PropertyType.BUILDING, buildingId)
                 .stream()
                 .map(PropertyMediaDTO::getFileUrl)
                 .toList();

@@ -8,11 +8,7 @@ import java.util.List;
 
 public interface BuildingServicesInterface {
 
-    BuildingDetailsDTO createBuilding(
-            BuildingSaveRequestDTO dto,
-            List<MultipartFile> pictures,
-            Long landlordId
-    ) throws IOException;
+    BuildingDetailsDTO createBuilding(BuildingSaveRequestDTO dto, List<MultipartFile> pictures, Long landlordId) throws IOException;
 
     BuildingDetailsDTO getBuildingById(Long id);
 
@@ -20,11 +16,7 @@ public interface BuildingServicesInterface {
 
     List<BuildingListDTO> getAllBuildings();
 
-    BuildingDetailsDTO updateBuilding(
-            BuildingUpdateRequestDTO dto,
-            List<Long> picturesToDelete,
-            List<MultipartFile> newPictures
-    ) throws IOException;
+    BuildingDetailsDTO updateBuilding(BuildingUpdateRequestDTO dto, List<Long> picturesToDelete, List<MultipartFile> newPictures) throws IOException;
 
     void softDeleteBuilding(Long buildingId);
 }

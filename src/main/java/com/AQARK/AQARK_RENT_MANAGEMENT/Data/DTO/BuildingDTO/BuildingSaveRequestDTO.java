@@ -26,7 +26,6 @@ public class BuildingSaveRequestDTO {
     private Long areaId;
 
     @NotNull(message = "Number of floors is required")
-    @Min(value = 0, message = "Number of floors cannot be negative")
     private String numberOfFloors;
 
     private String statusCode;

@@ -27,7 +27,7 @@ public class PropertyMedia {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "owner_type", nullable = false, length = 50)
-    private MediaOwnerType ownerType;
+    private PropertyType ownerType;
 
     @Column(name = "owner_id", nullable = false)
     private Long ownerId;

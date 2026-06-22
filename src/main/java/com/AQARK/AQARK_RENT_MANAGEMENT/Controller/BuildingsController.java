@@ -30,21 +30,8 @@ public class BuildingsController {
     private final PropertyCommonServiceInterface propertyCommonServiceInterface;
     private final ObjectMapper objectMapper;
 
-    @PostMapping( value = "/createProperties", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> createProperty(
-            @RequestPart("propertyType") String propertyType,
-            @RequestPart("data") String data,
-            @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures,
-            Authentication authentication) throws IOException {
 
-        Jwt jwt = (Jwt) authentication.getPrincipal();
-
-        Long landlordId = jwt.getClaim("refId");
-
-        return ResponseEntity.ok(propertyCommonServiceInterface.create(propertyType, data, pictures, landlordId));
-    }
-
-    @PutMapping("/getBuildingById")
+    @PostMapping("/getBuildingById")
     public BuildingDetailsDTO getBuildingById(@RequestBody BuildingIdDTO building) {
         return buildingService.getBuildingById(building.getBuildingId());
     }

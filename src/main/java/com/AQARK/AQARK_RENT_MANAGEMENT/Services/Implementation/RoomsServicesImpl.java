@@ -41,9 +41,13 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
     @Override
     @Transactional
-    public RoomDetailsDTO createRoom(RoomSaveRequestDTO dto, List<MultipartFile> images) throws IOException {
+    public RoomDetailsDTO createRoom(RoomSaveRequestDTO dto, List<MultipartFile> images, Long landlordId) throws IOException {
 
         validateCreateRoomRequest(dto);
+
+        if (landlordId == null || landlordId <= 0) {
+            throw new IllegalArgumentException("Landlord id is required.");
+        }
 
         EntityRooms room = new EntityRooms();
 
@@ -55,14 +59,16 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
             assignRoomToFlat(
                     room,
                     dto.getBuildingId(),
-                    dto.getFlatId()
+                    dto.getFlatId(),
+                    landlordId
             );
         }
 
         if (isHomeRoomRequest(dto)) {
             assignRoomToHome(
                     room,
-                    dto.getHomeId()
+                    dto.getHomeId(),
+                    landlordId
             );
         }
 
@@ -71,7 +77,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         if (images != null && !images.isEmpty()) {
             propertyMediaService.saveImages(
                     images,
-                    MediaOwnerType.ROOM,
+                    PropertyType.ROOM,
                     savedRoom.getId()
             );
         }
@@ -83,7 +89,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
     @Override
     @Transactional
-    public RoomDetailsDTO updateRoom(Long roomId, RoomSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete) throws IOException {
+    public RoomDetailsDTO updateRoom(Long roomId, RoomSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete, Long landlord) throws IOException {
 
         validateId(roomId, "Room id");
 
@@ -107,24 +113,22 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
         if (hasAnyParentField(dto)) {
             if (!isValidParentRequest(dto)) {
-                throw new IllegalArgumentException(
-                        "Room must belong either to building + flat, or to home only."
-                );
+                throw new IllegalArgumentException("Room must belong either to building + flat, or to home only.");
             }
 
             if (isFlatRoomRequest(dto)) {
-                assignRoomToFlat(room, dto.getBuildingId(), dto.getFlatId());
+                assignRoomToFlat(room, dto.getBuildingId(), dto.getFlatId(), landlord);
             }
 
             if (isHomeRoomRequest(dto)) {
-                assignRoomToHome(room, dto.getHomeId());
+                assignRoomToHome(room, dto.getHomeId(), landlord);
             }
         }
 
         EntityRooms savedRoom = roomRepository.save(room);
 
         propertyMediaService.updateImages(
-                MediaOwnerType.ROOM,
+                PropertyType.ROOM,
                 savedRoom.getId(),
                 imageIdsToDelete,
                 newImages
@@ -202,7 +206,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         EntityFlats relatedFlat = room.getFlat();
 
         propertyMediaService.softDeleteAllImages(
-                MediaOwnerType.ROOM,
+                PropertyType.ROOM,
                 room.getId()
         );
 
@@ -265,7 +269,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         }
     }
 
-    private void assignRoomToFlat(EntityRooms room, Long buildingId, Long flatId) {
+    private void assignRoomToFlat(EntityRooms room, Long buildingId, Long flatId, Long landlordId) {
         validateId(buildingId, "Building id");
         validateId(flatId, "Flat id");
 
@@ -309,7 +313,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         markFlatAsAvailableAsRooms(flat);
     }
 
-    private void assignRoomToHome(EntityRooms room, Long homeId) {
+    private void assignRoomToHome(EntityRooms room, Long homeId, Long landlordId) {
         validateId(homeId, "Home id");
 
         EntityHomes home = homeRepository.findById(homeId)
@@ -521,7 +525,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         boolean fromHome = building == null && flat == null && home != null;
 
         List<String> images = propertyMediaService
-                .getImages(MediaOwnerType.ROOM, room.getId())
+                .getImages(PropertyType.ROOM, room.getId())
                 .stream()
                 .map(PropertyMediaDTO::getFileUrl)
                 .toList();

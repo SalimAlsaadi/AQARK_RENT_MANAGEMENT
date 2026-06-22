@@ -9,6 +9,8 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -24,28 +26,30 @@ public class RoomsController {
     private final RoomsServicesInterface roomService;
     private final ObjectMapper objectMapper;
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public RoomDetailsDTO createRoom(@RequestPart("room") String roomJson, @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures) throws IOException {
-
-        RoomSaveRequestDTO dto = objectMapper.readValue(roomJson, RoomSaveRequestDTO.class);
-
-        return roomService.createRoom(
-                dto,
-                safeFiles(pictures)
-        );
-    }
+//    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+//    public RoomDetailsDTO createRoom(@RequestPart("room") String roomJson, @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures) throws IOException {
+//
+//        RoomSaveRequestDTO dto = objectMapper.readValue(roomJson, RoomSaveRequestDTO.class);
+//
+//        return roomService.createRoom(
+//                dto,
+//                safeFiles(pictures)
+//        );
+//    }
 
     @PutMapping(value = "/updateRoom", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public RoomDetailsDTO updateRoom(@RequestBody RoomIdDTO room, @RequestPart("room") String roomJson,
             @RequestPart(value = "newPictures", required = false) List<MultipartFile> newPictures,
-            @RequestPart(value = "imagesToDelete", required = false) String imagesToDeleteJson
+            @RequestPart(value = "imagesToDelete", required = false) String imagesToDeleteJson,
+                                     Authentication authentication
     ) throws IOException {
 
+        Long landlordId = extractLandlordId(authentication);
         RoomSaveRequestDTO dto = objectMapper.readValue(roomJson, RoomSaveRequestDTO.class);
 
         List<Long> imagesToDelete = parseIds(imagesToDeleteJson);
 
-        return roomService.updateRoom(room.getRoomId(), dto, safeFiles(newPictures), imagesToDelete);
+        return roomService.updateRoom(room.getRoomId(), dto, safeFiles(newPictures), imagesToDelete, landlordId);
     }
 
     @PostMapping("/getRoomById")
@@ -93,5 +97,23 @@ public class RoomsController {
                 json,
                 objectMapper.getTypeFactory().constructCollectionType(List.class, Long.class)
         );
+    }
+
+    private Long extractLandlordId(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
+            throw new IllegalStateException("Invalid authentication.");
+        }
+
+        Object refId = jwt.getClaim("refId");
+
+        if (refId == null) {
+            throw new IllegalStateException("Missing refId in token.");
+        }
+
+        if (refId instanceof Number number) {
+            return number.longValue();
+        }
+
+        return Long.parseLong(refId.toString());
     }
 }

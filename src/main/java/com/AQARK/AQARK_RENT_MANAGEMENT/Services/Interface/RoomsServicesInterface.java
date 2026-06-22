@@ -9,9 +9,9 @@ import java.util.List;
 
 public interface RoomsServicesInterface {
 
-    RoomDetailsDTO createRoom(RoomSaveRequestDTO dto, List<MultipartFile> images) throws IOException;
+    RoomDetailsDTO createRoom(RoomSaveRequestDTO dto, List<MultipartFile> images, Long landlordId) throws IOException;
 
-    RoomDetailsDTO updateRoom(Long roomId, RoomSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete) throws IOException;
+    RoomDetailsDTO updateRoom(Long roomId, RoomSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete, Long landlord) throws IOException;
 
     RoomDetailsDTO getRoomById(Long roomId);
 

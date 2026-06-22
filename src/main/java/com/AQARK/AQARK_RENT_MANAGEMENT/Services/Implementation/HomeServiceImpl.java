@@ -7,7 +7,7 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityHomes;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityRooms;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityUser;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.MediaOwnerType;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.HomeRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.RoomRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserRepository;
@@ -77,7 +77,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
         if (pictures != null && !pictures.isEmpty()) {
             propertyMediaService.saveImages(
                     pictures,
-                    MediaOwnerType.HOME,
+                    PropertyType.HOME,
                     savedHome.getId()
             );
         }
@@ -117,7 +117,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
         EntityHomes savedHome = homeRepository.save(home);
 
         propertyMediaService.updateImages(
-                MediaOwnerType.HOME,
+                PropertyType.HOME,
                 savedHome.getId(),
                 imageIdsToDelete,
                 newImages
@@ -173,7 +173,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
         if (rooms != null && !rooms.isEmpty()) {
             for (EntityRooms room : rooms) {
                 propertyMediaService.softDeleteAllImages(
-                        MediaOwnerType.ROOM,
+                        PropertyType.ROOM,
                         room.getId()
                 );
 
@@ -182,7 +182,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
         }
 
         propertyMediaService.softDeleteAllImages(
-                MediaOwnerType.HOME,
+                PropertyType.HOME,
                 home.getId()
         );
 
@@ -261,7 +261,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
         EntityUser landlord = home.getLandlord();
 
         List<PropertyMediaDTO> images = propertyMediaService.getImages(
-                MediaOwnerType.HOME,
+                PropertyType.HOME,
                 home.getId()
         );
 

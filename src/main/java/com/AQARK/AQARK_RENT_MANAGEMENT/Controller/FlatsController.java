@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.FlatsServicesInterface;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,17 +24,10 @@ public class FlatsController {
     private final FlatsServicesInterface flatsService;
     private final ObjectMapper objectMapper;
 
-    @PostMapping(
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
-    )
-    public FlatDetailsDTO createFlat(
-            @RequestPart("flat") String flatJson,
-            @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures,
-            Authentication authentication
-    ) throws IOException {
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public FlatDetailsDTO createFlat(@RequestPart("flat") String flatJson, @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures, Authentication authentication) throws IOException {
 
-        FlatSaveRequestDTO dto =
-                objectMapper.readValue(flatJson, FlatSaveRequestDTO.class);
+        FlatSaveRequestDTO dto = objectMapper.readValue(flatJson, FlatSaveRequestDTO.class);
 
         Long landlordId = extractRefId(authentication);
 
@@ -44,25 +38,19 @@ public class FlatsController {
         );
     }
 
-    @GetMapping("/{id}")
-    public FlatDetailsDTO getFlatById(
-            @PathVariable Long id
-    ) {
-        return flatsService.getFlatById(id);
+    @PostMapping("/getFlatById")
+    public FlatDetailsDTO getFlatById(@RequestBody FlatIdDTO flat) {
+        return flatsService.getFlatById(flat.getFlatId());
     }
 
-    @GetMapping("/building/{buildingId}")
-    public List<FlatDetailsDTO> getFlatsByBuildingId(
-            @PathVariable Long buildingId
-    ) {
-        return flatsService.getFlatsByBuildingId(buildingId);
+    @PostMapping("/getFlatsByBuildingId")
+    public List<FlatDetailsDTO> getFlatsByBuildingId(@RequestBody BuildingIdDTO building) {
+        return flatsService.getFlatsByBuildingId(building.getBuildingId());
     }
 
-    @GetMapping("/building/{buildingId}/list")
-    public List<FlatListDTO> getFlatListByBuildingId(
-            @PathVariable Long buildingId
-    ) {
-        return flatsService.getFlatListByBuildingId(buildingId);
+    @PostMapping("/getFlatListByBuildingId")
+    public List<FlatListDTO> getFlatListByBuildingId(@RequestBody BuildingIdDTO building) {
+        return flatsService.getFlatListByBuildingId(building.getBuildingId());
     }
 
     @GetMapping("/landlord/{landlordId}")

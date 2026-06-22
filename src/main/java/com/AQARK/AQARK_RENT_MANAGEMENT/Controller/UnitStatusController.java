@@ -1,9 +1,11 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO.*;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.StatusDomain;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -36,9 +38,14 @@ public class UnitStatusController {
         return unitStatusService.getStatusById(status.getStatusId());
     }
 
-    @GetMapping("/getStatusByCode")
+    @PostMapping("/getStatusByCode")
     public UnitStatusDTO getStatusByCode(@RequestBody DomainWithCodeDTO data) {
         return unitStatusService.getStatusByCode( data.getStatusDomain(), data.getCode());
+    }
+
+    @PostMapping("/getStatusesByDomain")
+    public ResponseEntity<List<UnitStatusDTO>> getActiveStatusesByDomain(@RequestBody StatusDomainDTO domain){
+        return ResponseEntity.ok(unitStatusService.getActiveStatusesByDomain(StatusDomain.valueOf(domain.getStatusDomain())));
     }
 
     @PostMapping

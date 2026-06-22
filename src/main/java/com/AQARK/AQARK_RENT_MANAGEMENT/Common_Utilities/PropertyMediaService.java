@@ -1,7 +1,7 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.MediaOwnerType;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyMedia;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.PropertyMediaRepository;
 import jakarta.transaction.Transactional;
@@ -34,7 +34,7 @@ public class PropertyMediaService {
     @Transactional
     public List<PropertyMediaDTO> saveImages(
             List<MultipartFile> files,
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId
     ) throws IOException {
 
@@ -97,7 +97,7 @@ public class PropertyMediaService {
      * Get active images for owner.
      */
     public List<PropertyMediaDTO> getImages(
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId
     ) {
         validateOwner(ownerType, ownerId);
@@ -116,7 +116,7 @@ public class PropertyMediaService {
      */
     @Transactional
     public List<PropertyMediaDTO> updateImages(
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId,
             List<Long> imageIdsToDelete,
             List<MultipartFile> newImages
@@ -143,7 +143,7 @@ public class PropertyMediaService {
      */
     @Transactional
     public void softDeleteImages(
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId,
             List<Long> imageIds
     ) {
@@ -195,7 +195,7 @@ public class PropertyMediaService {
      */
     @Transactional
     public void softDeleteAllImages(
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId
     ) {
         validateOwner(ownerType, ownerId);
@@ -220,7 +220,7 @@ public class PropertyMediaService {
      */
     @Transactional
     public void setMainImage(
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId,
             Long mediaId
     ) {
@@ -255,7 +255,7 @@ public class PropertyMediaService {
      */
     @Transactional
     public void reorderImages(
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId,
             List<Long> orderedImageIds
     ) {
@@ -290,7 +290,7 @@ public class PropertyMediaService {
         propertyMediaRepository.saveAll(mediaList);
     }
 
-    private void ensureMainImage(MediaOwnerType ownerType, Long ownerId) {
+    private void ensureMainImage(PropertyType ownerType, Long ownerId) {
         List<PropertyMedia> activeImages =
                 propertyMediaRepository.findByOwnerTypeAndOwnerIdAndDeletedFalseOrderBySortOrderAsc(
                         ownerType,
@@ -306,7 +306,7 @@ public class PropertyMediaService {
         }
     }
 
-    private void normalizeSortOrder(MediaOwnerType ownerType, Long ownerId) {
+    private void normalizeSortOrder(PropertyType ownerType, Long ownerId) {
         List<PropertyMedia> activeImages =
                 propertyMediaRepository.findByOwnerTypeAndOwnerIdAndDeletedFalseOrderBySortOrderAsc(
                         ownerType,
@@ -322,14 +322,14 @@ public class PropertyMediaService {
         propertyMediaRepository.saveAll(activeImages);
     }
 
-    private Path buildOwnerFolder(MediaOwnerType ownerType, Long ownerId) {
+    private Path buildOwnerFolder(PropertyType ownerType, Long ownerId) {
         return Paths.get(uploadDir)
                 .resolve(ownerType.name().toLowerCase())
                 .resolve(String.valueOf(ownerId));
     }
 
     private String buildStorageKey(
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId,
             String fileName
     ) {
@@ -337,7 +337,7 @@ public class PropertyMediaService {
     }
 
     private String buildFileUrl(
-            MediaOwnerType ownerType,
+            PropertyType ownerType,
             Long ownerId,
             String fileName
     ) {
@@ -349,7 +349,7 @@ public class PropertyMediaService {
                 + fileName;
     }
 
-    private void validateOwner(MediaOwnerType ownerType, Long ownerId) {
+    private void validateOwner(PropertyType ownerType, Long ownerId) {
         if (ownerType == null) {
             throw new IllegalArgumentException("Owner type is required.");
         }

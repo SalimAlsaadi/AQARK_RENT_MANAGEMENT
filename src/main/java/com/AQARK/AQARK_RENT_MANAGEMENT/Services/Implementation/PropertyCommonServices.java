@@ -4,6 +4,7 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingSaveRequestD
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -18,48 +20,75 @@ import java.util.List;
 public class PropertyCommonServices implements PropertyCommonServiceInterface {
 
     private final ObjectMapper objectMapper;
+
     private final BuildingServicesInterface buildingService;
     private final FlatsServicesInterface flatService;
     private final HomeServiceInterface homeService;
     private final RoomsServicesInterface roomService;
-    //private final ShopService shopService;
 
-    public Object create(String propertyType, String data, List<MultipartFile> pictures, Long landlord ) throws IOException {
+    // private final ShopServiceInterface shopService;
 
-        return switch (propertyType.toUpperCase()) {
+    @Override
+    public Object create(String propertyType, String data, List<MultipartFile> pictures, Long landlordId) throws IOException {
 
-            case "BUILDING" -> buildingService.createBuilding(
+        PropertyType type = parsePropertyType(propertyType);
+
+        if (data == null || data.trim().isEmpty()) {
+            throw new IllegalArgumentException("Property data is required.");
+        }
+
+        if (landlordId == null || landlordId <= 0) {
+            throw new IllegalArgumentException("Landlord id is required.");
+        }
+
+        List<MultipartFile> safePictures =
+                pictures == null ? Collections.emptyList() : pictures;
+
+        return switch (type) {
+
+            case BUILDING -> buildingService.createBuilding(
                     objectMapper.readValue(data, BuildingSaveRequestDTO.class),
-                    pictures,
-                     landlord
+                    safePictures,
+                    landlordId
             );
 
-            case "FLAT" -> flatService.createFlat(
+            case FLAT -> flatService.createFlat(
                     objectMapper.readValue(data, FlatSaveRequestDTO.class),
-                    pictures,
-                    landlord
+                    safePictures,
+                    landlordId
             );
 
-            case "HOME" -> homeService.createHome(
+            case HOME -> homeService.createHome(
                     objectMapper.readValue(data, HomeSaveRequestDTO.class),
-                    pictures,
-                    landlord
+                    safePictures,
+                    landlordId
             );
 
-            case "ROOM" -> roomService.createRoom(
+            case ROOM -> roomService.createRoom(
                     objectMapper.readValue(data, RoomSaveRequestDTO.class),
-                    pictures
+                    safePictures,
+                    landlordId
             );
 
-//            case "SHOP" -> shopService.createShop(
-//                    objectMapper.readValue(data, ShopSaveRequestDTO.class),
-//                    pictures
-//            );
-
-            default -> throw new IllegalArgumentException(
-                    "Unsupported property type: " + propertyType
+            case SHOP -> throw new UnsupportedOperationException(
+                    "SHOP property type is not implemented yet."
             );
         };
     }
-}
 
+    private PropertyType parsePropertyType(String propertyType) {
+        if (propertyType == null || propertyType.trim().isEmpty()) {
+            throw new IllegalArgumentException("Property type is required.");
+        }
+
+        try {
+            return PropertyType.valueOf(
+                    propertyType.trim().toUpperCase()
+            );
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(
+                    "Unsupported property type: " + propertyType
+            );
+        }
+    }
+}

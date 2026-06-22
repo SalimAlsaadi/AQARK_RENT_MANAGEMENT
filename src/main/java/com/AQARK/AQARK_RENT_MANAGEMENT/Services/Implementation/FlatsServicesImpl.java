@@ -76,7 +76,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         if (pictures != null && !pictures.isEmpty()) {
             propertyMediaService.saveImages(
                     pictures,
-                    MediaOwnerType.FLAT,
+                    PropertyType.FLAT,
                     savedFlat.getId()
             );
         }
@@ -138,7 +138,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         EntityFlats savedFlat = flatsRepository.save(flat);
 
         propertyMediaService.updateImages(
-                MediaOwnerType.FLAT,
+                PropertyType.FLAT,
                 savedFlat.getId(),
                 imageIdsToDelete,
                 newImages
@@ -237,7 +237,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         }
 
         propertyMediaService.softDeleteAllImages(
-                MediaOwnerType.FLAT,
+                PropertyType.FLAT,
                 flat.getId()
         );
 
@@ -355,7 +355,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         EntityUser landlord = flat.getLandlord();
 
         List<String> imageUrls = propertyMediaService
-                .getImages(MediaOwnerType.FLAT, flat.getId())
+                .getImages(PropertyType.FLAT, flat.getId())
                 .stream()
                 .map(PropertyMediaDTO::getFileUrl)
                 .toList();
@@ -450,14 +450,6 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
                 .flatId(flat.getId())
                 .flatNumber(flat.getFlatNumber())
                 .floorNumber(flat.getFloorNumber())
-                .numberOfRooms(flat.getNumberOfRooms())
-                .numberOfBathrooms(flat.getNumberOfBathrooms())
-                .price(flat.getPrice())
-                .statusCode(status != null ? status.getCode() : null)
-                .statusNameEn(status != null ? status.getNameEn() : null)
-                .statusNameAr(status != null ? status.getNameAr() : null)
-                .statusColorCode(status != null ? status.getColorCode() : null)
-                .statusIcon(status != null ? status.getIcon() : null)
                 .build();
     }
 
