@@ -7,34 +7,34 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.UserType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserTypeMappingRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UserTypeRepository;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Security.KeycloakAdminUserService;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UserServicesInterface;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.List;
-import java.util.Set;
 
 @Slf4j
 @Service
 public class UserServicesImpl implements UserServicesInterface {
 
+    /** Code of the landlord user type in the {@code user_types} table. */
+    private static final String LANDLORD_CODE = "LANDLORD";
+
     private final UserRepository userRepository;
-    private final WebClient keycloakWebClient;
+    private final KeycloakAdminUserService keycloakAdminUserService;
     private final UserTypeRepository userTypeRepository;
     private final UserTypeMappingRepository userTypeMappingRepository;
 
     public UserServicesImpl(UserRepository userRepository,
-                            @Qualifier("keycloakWebClient") WebClient keycloakWebClient,
+                            KeycloakAdminUserService keycloakAdminUserService,
                             UserTypeRepository userTypeRepository,
                             UserTypeMappingRepository userTypeMappingRepository) {
         this.userRepository = userRepository;
-        this.keycloakWebClient = keycloakWebClient;
+        this.keycloakAdminUserService = keycloakAdminUserService;
         this.userTypeRepository = userTypeRepository;
         this.userTypeMappingRepository = userTypeMappingRepository;
     }
@@ -83,17 +83,27 @@ public class UserServicesImpl implements UserServicesInterface {
 
         validateNewUser(dto);
 
+        List<UserType> userTypes = resolveUserTypes(dto.getUserType());
+        validateCrNumber(dto, userTypes);
+
         EntityUser user = buildUser(dto);
         user = userRepository.save(user);
 
-        saveUserTypes(user, dto.getUserType());
+        saveUserTypes(user, userTypes);
 
-        Long sasUserId = createUserInSas(user, dto);
+        // Map each AQARK user type to its Keycloak realm role (e.g. LANDLORD -> ROLE_LANDLORD)
+        // so the token carries the role and both the API and the SPA can authorize on it.
+        List<String> realmRoles = userTypes.stream()
+                .map(type -> "ROLE_" + type.getCode().toUpperCase())
+                .toList();
 
-        user.setSasUserId(sasUserId);
-        userRepository.save(user);
+        // Provision the identity in Keycloak. If this fails, the surrounding @Transactional
+        // rolls back the AQARK user + type mappings so we don't leave a half-registered user.
+        String keycloakId = keycloakAdminUserService.createUser(
+                dto.getEmail(), dto.getFirstName(), dto.getLastName(), dto.getPassword(),
+                user.getId(), realmRoles);
 
-        log.info("User created successfully, aqarkUserId={}, sasUserId={}", user.getId(), sasUserId);
+        log.info("User created successfully, aqarkUserId={}, keycloakId={}", user.getId(), keycloakId);
 
         return "User created successfully";
     }
@@ -107,7 +117,7 @@ public class UserServicesImpl implements UserServicesInterface {
 
         userRepository.save(user);
 
-        updateUserInSas(user, dto.getPassword(), dto.getEmail());
+        keycloakAdminUserService.updateUser(user.getId(), dto.getEmail(), dto.getPassword());
 
         log.info("User updated his profile, userId={}", id);
 
@@ -137,8 +147,8 @@ public class UserServicesImpl implements UserServicesInterface {
     }
 
     private void validateNewUser(RegistrationUserDTO dto) {
-        if (userRepository.existsByNationalId(dto.getEmail())) {
-            throw new IllegalStateException("User already exists with email: " + dto.getEmail());
+        if (userRepository.existsByNationalId(dto.getNationalId())) {
+            throw new IllegalStateException("User already exists with national ID: " + dto.getNationalId());
         }
 
         if (dto.getUserType() == null || dto.getUserType().isEmpty()) {
@@ -155,16 +165,53 @@ public class UserServicesImpl implements UserServicesInterface {
                 .address(dto.getAddress())
                 .isActive(Boolean.TRUE.equals(dto.getIsActive()))
                 .nationalId(dto.getNationalId())
+                .crNumber(normalizeCrNumber(dto.getCrNumber()))
                 .build();
     }
 
-    private void saveUserTypes(EntityUser user, List<Integer> userTypeIds) {
+    /**
+     * Loads the selected user types and fails if any id is unknown.
+     */
+    private List<UserType> resolveUserTypes(List<Integer> userTypeIds) {
         List<UserType> userTypes = userTypeRepository.findAllById(userTypeIds);
 
         if (userTypes.size() != userTypeIds.size()) {
             throw new EntityNotFoundException("One or more user types are invalid");
         }
 
+        return userTypes;
+    }
+
+    /**
+     * A CR number is mandatory and must be unique when the user registers as a landlord;
+     * it is ignored for any other role (e.g. tenant).
+     */
+    private void validateCrNumber(RegistrationUserDTO dto, List<UserType> userTypes) {
+        boolean isLandlord = userTypes.stream()
+                .anyMatch(type -> LANDLORD_CODE.equalsIgnoreCase(type.getCode()));
+
+        if (!isLandlord) {
+            return;
+        }
+
+        String crNumber = normalizeCrNumber(dto.getCrNumber());
+        if (crNumber == null) {
+            throw new IllegalArgumentException("CR number is required to register as a landlord");
+        }
+
+        if (userRepository.existsByCrNumber(crNumber)) {
+            throw new IllegalStateException("CR number already registered: " + crNumber);
+        }
+    }
+
+    private String normalizeCrNumber(String crNumber) {
+        if (crNumber == null || crNumber.isBlank()) {
+            return null;
+        }
+        return crNumber.trim();
+    }
+
+    private void saveUserTypes(EntityUser user, List<UserType> userTypes) {
         List<EntityUserTypeMapping> mappings = userTypes.stream()
                 .map(type -> EntityUserTypeMapping.builder()
                         .user(user)
@@ -174,65 +221,6 @@ public class UserServicesImpl implements UserServicesInterface {
                 .toList();
 
         userTypeMappingRepository.saveAll(mappings);
-    }
-
-
-    private Long createUserInSas(EntityUser user, RegistrationUserDTO dto) {
-        try {
-            RegistrationWithSASDTO request = new RegistrationWithSASDTO();
-            request.setEmail(dto.getEmail());
-            request.setPassword(dto.getPassword());
-            request.setRefId(user.getId());
-            request.setRoles(Set.of("PUBLIC_USER"));
-            request.setAllowedClientIds(Set.of("AQARK-client"));
-
-            ApiResponseDTO<Long> response = keycloakWebClient.post()
-                    .uri("https://localhost:9443/api/admin/users/service")
-                    .bodyValue(request)
-                    .retrieve()
-                    .bodyToMono(new ParameterizedTypeReference<ApiResponseDTO<Long>>() {})
-                    .block();
-
-            if (response == null || !response.isSuccess() || response.getData() == null) {
-                throw new IllegalStateException(
-                        response != null ? response.getMessage() : "Empty response from SAS"
-                );
-            }
-
-            return response.getData();
-
-        } catch (Exception ex) {
-            log.error("Failed to create user in SAS, aqarkUserId={}, email={}", user.getId(), dto.getEmail(), ex);
-            throw new RuntimeException("Failed to create user in SAS", ex);
-        }
-    }
-
-    private void updateUserInSas(EntityUser user, String password, String email) {
-        try {
-            UpdateWithSASDTO request = new UpdateWithSASDTO();
-            request.setEmail(email);
-            request.setPassword(password);
-            request.setRefId(user.getId());
-            request.setRoles("PUBLIC_USER");
-            request.setAllowedClientIds("AQARK-client");
-
-            ApiResponseDTO<Long> response = keycloakWebClient.put()
-                    .uri("https://localhost:9443/api/admin/users/service")
-                    .bodyValue(request)
-                    .retrieve()
-                    .bodyToMono(new ParameterizedTypeReference<ApiResponseDTO<Long>>() {})
-                    .block();
-
-            if (response == null || !response.isSuccess() || response.getData() == null) {
-                throw new IllegalStateException(
-                        response != null ? response.getMessage() : "Empty response from SAS"
-                );
-            }
-
-        } catch (Exception ex) {
-            log.error("Failed to create user in SAS, aqarkUserId={}, email={}", user.getId(), email, ex);
-            throw new RuntimeException("Failed to create user in SAS", ex);
-        }
     }
 
 

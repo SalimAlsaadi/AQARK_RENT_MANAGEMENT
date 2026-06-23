@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -96,6 +97,8 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/actuator/**").hasRole("ACTUATOR")
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // Landlord property-management APIs — landlords only.
+                .requestMatchers("/api/buildings/**", "/api/flats/**", "/api/rooms/**").hasRole("LANDLORD")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().denyAll()
             )
@@ -128,6 +131,9 @@ public class SecurityConfig {
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                // Public self-registration: pre-auth, no session to protect, so CSRF adds friction
+                // (first-time visitor has no token cookie yet) without security benefit.
+                .ignoringRequestMatchers(new AntPathRequestMatcher("/api/users/registerWithSAS", "POST"))
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/login").permitAll()
@@ -135,7 +141,12 @@ public class SecurityConfig {
                 .requestMatchers("/error").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/actuator/**").hasRole("ACTUATOR")
+                // Public tenant/landlord self-registration + the role list its form needs.
+                .requestMatchers(HttpMethod.POST, "/api/users/registerWithSAS").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/ref-types", "/api/ref-types/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                // Landlord property-management APIs — landlords only.
+                .requestMatchers("/api/buildings/**", "/api/flats/**", "/api/rooms/**").hasRole("LANDLORD")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().authenticated()
             )

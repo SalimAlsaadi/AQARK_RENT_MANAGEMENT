@@ -47,6 +47,15 @@ public class EntityUser {
     @Column(name = "national_id", unique = true, nullable = false)
     private String nationalId;
 
+    /**
+     * Commercial Registration (CR) number. Required for landlords, null for tenants.
+     * Not declared {@code unique} at the column level because SQL Server allows only a single
+     * NULL under a UNIQUE constraint; uniqueness is enforced for non-null values via a filtered
+     * index (see migration) and the service-layer {@code existsByCrNumber} check.
+     */
+    @Column(name = "cr_number", length = 50)
+    private String crNumber;
+
     /* =========================
         SAS LINK FIELD
        ========================= */

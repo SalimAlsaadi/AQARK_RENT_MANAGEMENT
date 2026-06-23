@@ -41,9 +41,19 @@ public class RegistrationUserDTO {
     @NotBlank
     private String nationalId;
 
+    /**
+     * Commercial Registration number. Mandatory when registering as a landlord, ignored for
+     * tenants. Conditional validation lives in the service layer because it depends on the
+     * selected {@link #userType}.
+     */
+    @Size(max = 50)
+    private String crNumber;
+
     // ---------- AUTH FIELD ----------
+    // Must satisfy the Keycloak realm password policy:
+    // length>=12, upper, lower, digit, special char, not equal to username.
     @NotBlank
-    @Size(min = 8)
+    @Size(min = 12, message = "Password must be at least 12 characters")
     private String password;
 
 }

@@ -19,4 +19,6 @@ public interface UserRepository extends JpaRepository<EntityUser, Long> {
 
     boolean existsByNationalIdAndIdNot(String nationalId, Long id);
 
+    boolean existsByCrNumber(String crNumber);
+
 }
