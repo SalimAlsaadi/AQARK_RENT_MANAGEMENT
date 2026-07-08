@@ -1,4 +1,4 @@
-package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities;
+package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums;
 
 public enum PropertyType {
     BUILDING,

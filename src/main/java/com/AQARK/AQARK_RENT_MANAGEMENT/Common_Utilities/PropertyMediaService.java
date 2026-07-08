@@ -1,7 +1,7 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyType;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyMedia;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.PropertyMediaRepository;
 import jakarta.transaction.Transactional;

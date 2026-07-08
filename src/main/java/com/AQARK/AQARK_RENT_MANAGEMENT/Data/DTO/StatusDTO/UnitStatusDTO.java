@@ -1,10 +1,12 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO;
 
-import lombok.Builder;
-import lombok.Getter;
+import lombok.*;
 
 @Getter
 @Builder
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
 public class UnitStatusDTO {
 
     private Long id;

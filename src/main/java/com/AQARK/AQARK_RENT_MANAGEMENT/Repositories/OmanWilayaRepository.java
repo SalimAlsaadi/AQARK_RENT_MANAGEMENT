@@ -8,4 +8,5 @@ import java.util.List;
 public interface OmanWilayaRepository extends JpaRepository<OmanWilayaEntity, Long> {
 
     List<OmanWilayaEntity> findByRegionIdAndActiveTrueOrderByDisplayOrderAscNameEnAsc(Long regionId);
+    OmanWilayaEntity findByIdAndRegionId(Long wilayaId, Long regionId);
 }

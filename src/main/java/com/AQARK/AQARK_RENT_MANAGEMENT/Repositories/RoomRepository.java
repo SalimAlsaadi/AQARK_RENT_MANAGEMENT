@@ -87,7 +87,9 @@ public interface RoomRepository extends JpaRepository<EntityRooms, Long> {
     """)
     List<EntityRooms> findAllDetails();
 
-    long countByFlatIdAndDeletedFalse(Long flatId);
+    int countByFlatIdAndDeletedFalse(Long flatId);
+
+    int countByHomeIdAndDeletedFalse(Long homeId);
 
     boolean existsByFlatIdAndRoomNumberIgnoreCaseAndDeletedFalse(Long flatId, String roomNumber);
 

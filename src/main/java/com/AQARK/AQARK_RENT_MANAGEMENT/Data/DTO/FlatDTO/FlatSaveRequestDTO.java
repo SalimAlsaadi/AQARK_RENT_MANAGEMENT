@@ -18,7 +18,7 @@ public class FlatSaveRequestDTO {
 
     @NotBlank(message = "Number of rooms is required")
     @Size(max = 50, message = "Number of rooms must not exceed 50 characters")
-    private String numberOfRooms;
+    private Integer numberOfRooms;
 
     @NotBlank(message = "Number of bathrooms is required")
     @Size(max = 50, message = "Number of bathrooms must not exceed 50 characters")

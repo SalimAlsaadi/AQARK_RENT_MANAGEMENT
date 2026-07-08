@@ -1,6 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Repositories;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyType;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyMedia;
 import org.springframework.data.jpa.repository.JpaRepository;
 

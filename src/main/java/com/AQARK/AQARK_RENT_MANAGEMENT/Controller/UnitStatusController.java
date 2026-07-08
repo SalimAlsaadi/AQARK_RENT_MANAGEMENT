@@ -1,7 +1,7 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO.*;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

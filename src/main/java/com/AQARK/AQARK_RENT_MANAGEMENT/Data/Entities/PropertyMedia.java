@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import jakarta.persistence.*;
 import lombok.*;
 

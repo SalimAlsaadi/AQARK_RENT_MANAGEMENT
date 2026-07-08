@@ -3,7 +3,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO.UnitStatusDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO.UnitStatusSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityUnitStatus;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
 
 import java.util.List;
 
