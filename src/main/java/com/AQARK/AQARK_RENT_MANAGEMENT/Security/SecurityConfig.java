@@ -39,7 +39,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.util.UriComponentsBuilder;
-
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import java.util.List;
 import java.util.Map;
 
@@ -64,17 +65,22 @@ public class SecurityConfig {
     private final RequestIdFilter requestIdFilter;
     private final JwtDecoder jwtDecoder;
     private final ClientRegistrationRepository clientRegistrationRepository;
+    private final CsrfCookieFilter csrfCookieFilter;
 
-    public SecurityConfig(KeycloakJwtRolesConverter keycloakJwtRolesConverter,
-                          KeycloakOidcAuthoritiesMapper keycloakOidcAuthoritiesMapper,
-                          RateLimitingFilter rateLimitingFilter,
-                          RequestIdFilter requestIdFilter,
-                          JwtDecoder jwtDecoder,
-                          ClientRegistrationRepository clientRegistrationRepository) {
+    public SecurityConfig(
+            KeycloakJwtRolesConverter keycloakJwtRolesConverter,
+            KeycloakOidcAuthoritiesMapper keycloakOidcAuthoritiesMapper,
+            RateLimitingFilter rateLimitingFilter,
+            RequestIdFilter requestIdFilter,
+            CsrfCookieFilter csrfCookieFilter,
+            JwtDecoder jwtDecoder,
+            ClientRegistrationRepository clientRegistrationRepository
+    ) {
         this.keycloakJwtRolesConverter = keycloakJwtRolesConverter;
         this.keycloakOidcAuthoritiesMapper = keycloakOidcAuthoritiesMapper;
         this.rateLimitingFilter = rateLimitingFilter;
         this.requestIdFilter = requestIdFilter;
+        this.csrfCookieFilter = csrfCookieFilter;
         this.jwtDecoder = jwtDecoder;
         this.clientRegistrationRepository = clientRegistrationRepository;
     }
@@ -129,7 +135,7 @@ public class SecurityConfig {
         http
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf
-                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .csrfTokenRepository(csrfTokenRepository())
                 .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
                 // Public self-registration: pre-auth, no session to protect, so CSRF adds friction
                 // (first-time visitor has no token cookie yet) without security benefit.
@@ -146,7 +152,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/ref-types", "/api/ref-types/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // Landlord property-management APIs — landlords only.
-                .requestMatchers("/api/buildings/**", "/api/flats/**", "/api/rooms/**").hasRole("LANDLORD")
+                .requestMatchers("/api/buildings/**", "/api/flats/**", "/api/rooms/**", "/api/unit-statuses/**", "/api/properties/**").hasRole("LANDLORD")
                 .requestMatchers("/api/**").authenticated()
                 .anyRequest().authenticated()
             )
@@ -167,7 +173,7 @@ public class SecurityConfig {
             .exceptionHandling(ex -> ex.authenticationEntryPoint(authenticationEntryPoint()))
             .addFilterBefore(requestIdFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterAfter(rateLimitingFilter, RequestIdFilter.class)
-            .addFilterAfter(new CsrfCookieFilter(), UsernamePasswordAuthenticationFilter.class)
+            .addFilterAfter(csrfCookieFilter, UsernamePasswordAuthenticationFilter.class)
             .headers(this::applySecurityHeaders);
 
         return http.build();
@@ -301,5 +307,21 @@ public class SecurityConfig {
         } catch (Exception e) {
             return "{\"status\":500}";
         }
+    }
+
+    @Bean
+    public CookieCsrfTokenRepository csrfTokenRepository() {
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+
+        repository.setHeaderName("X-XSRF-TOKEN");
+        repository.setCookieName("XSRF-TOKEN");
+
+        repository.setCookieCustomizer(cookie -> cookie
+                .path("/")
+                .secure(true)
+                .sameSite("None")
+        );
+
+        return repository;
     }
 }

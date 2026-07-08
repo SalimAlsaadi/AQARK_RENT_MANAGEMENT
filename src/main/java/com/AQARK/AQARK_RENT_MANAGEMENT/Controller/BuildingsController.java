@@ -12,7 +12,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -29,6 +34,8 @@ public class BuildingsController {
     private final BuildingServicesInterface buildingService;
     private final PropertyCommonServiceInterface propertyCommonServiceInterface;
     private final ObjectMapper objectMapper;
+    private final OAuth2AuthorizedClientService authorizedClientService;
+    private final JwtDecoder jwtDecoder;
 
 
     @PostMapping("/getBuildingById")
@@ -39,14 +46,14 @@ public class BuildingsController {
     @PostMapping("/getBuildingsByLandlordId")
     public List<BuildingListDTO> getBuildingsByLandlordId(Authentication authentication) {
 
-        Long landlordId = extractRefId(authentication);
+        Long landlordId = extractLandlordId(authentication);
 
         return buildingService.getBuildingsByLandlordId(landlordId);
     }
 
     @GetMapping("/my-buildings")
     public List<BuildingListDTO> getMyBuildings(Authentication authentication) {
-        Long landlordId = extractRefId(authentication);
+        Long landlordId = extractLandlordId(authentication);
 
         return buildingService.getBuildingsByLandlordId(landlordId);
     }
@@ -84,22 +91,59 @@ public class BuildingsController {
         buildingService.softDeleteBuilding(id);
     }
 
-    private Long extractRefId(Authentication authentication) {
-        if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
-            throw new IllegalStateException("Invalid authentication.");
+    private Long extractLandlordId(Authentication authentication) {
+
+        Jwt jwt = resolveAccessToken(authentication);
+
+        String refId = jwt.getClaimAsString("refId");
+
+        if (refId == null || refId.isBlank()) {
+            throw new IllegalStateException(
+                    "refId claim is missing from the Keycloak access token."
+            );
         }
 
-        Object refId = jwt.getClaim("refId");
+        try {
+            return Long.parseLong(refId);
+        } catch (NumberFormatException exception) {
+            throw new IllegalStateException(
+                    "Invalid refId claim value in Keycloak access token: " + refId,
+                    exception
+            );
+        }
+    }
 
-        if (refId == null) {
-            throw new IllegalStateException("Missing refId in token.");
+    private Jwt resolveAccessToken(Authentication authentication) {
+
+        if (authentication instanceof OAuth2AuthenticationToken oauth2Authentication) {
+
+            OAuth2AuthorizedClient authorizedClient =
+                    authorizedClientService.loadAuthorizedClient(
+                            oauth2Authentication.getAuthorizedClientRegistrationId(),
+                            oauth2Authentication.getName()
+                    );
+
+            if (authorizedClient == null || authorizedClient.getAccessToken() == null) {
+                throw new IllegalStateException(
+                        "No Keycloak access token found for the current authenticated session."
+                );
+            }
+
+            return jwtDecoder.decode(
+                    authorizedClient.getAccessToken().getTokenValue()
+            );
         }
 
-        if (refId instanceof Number number) {
-            return number.longValue();
+        if (authentication instanceof JwtAuthenticationToken jwtAuthentication) {
+            return jwtAuthentication.getToken();
         }
 
-        return Long.parseLong(refId.toString());
+        throw new IllegalStateException(
+                "Unsupported authentication type: " +
+                        (authentication == null
+                                ? "null"
+                                : authentication.getClass().getName())
+        );
     }
 
     private List<MultipartFile> safePictures(List<MultipartFile> pictures) {

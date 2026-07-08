@@ -6,7 +6,8 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomStatusDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
@@ -32,6 +33,12 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     private static final String FLAT_STATUS_UNDER_MAINTENANCE = "UNDER_MAINTENANCE";
     private static final String FLAT_STATUS_BLOCKED = "BLOCKED";
 
+    private static final String HOME_AVAILABLE = "AVAILABLE";
+    private static final String HOME_AVAILABLE_AS_ROOMS = "AVAILABLE_AS_ROOMS";
+    private static final String HOME_PARTIALLY_RENTED_AS_ROOMS = "PARTIALLY_RENTED_AS_ROOMS";
+    private static final String HOME_FULLY_RENTED_AS_ROOMS = "FULLY_RENTED_AS_ROOMS";
+    private static final String ROOM_RENTED = "RENTED";
+
     private final RoomRepository roomRepository;
     private final FlatsRepository flatsRepository;
     private final HomeRepository homeRepository;
@@ -56,20 +63,11 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         room.setStatus(resolveRoomStatus(dto.getStatusCode()));
 
         if (isFlatRoomRequest(dto)) {
-            assignRoomToFlat(
-                    room,
-                    dto.getBuildingId(),
-                    dto.getFlatId(),
-                    landlordId
-            );
+            assignRoomToFlat(room, dto.getBuildingId(), dto.getFlatId(), landlordId);
         }
 
         if (isHomeRoomRequest(dto)) {
-            assignRoomToHome(
-                    room,
-                    dto.getHomeId(),
-                    landlordId
-            );
+            assignRoomToHome(room, dto.getHomeId(), landlordId);
         }
 
         EntityRooms savedRoom = roomRepository.save(room);
@@ -205,10 +203,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
         EntityFlats relatedFlat = room.getFlat();
 
-        propertyMediaService.softDeleteAllImages(
-                PropertyType.ROOM,
-                room.getId()
-        );
+        propertyMediaService.softDeleteAllImages(PropertyType.ROOM, room.getId());
 
         room.setDeleted(true);
         room.setActive(false);
@@ -273,10 +268,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         validateId(buildingId, "Building id");
         validateId(flatId, "Flat id");
 
-        EntityBuildings building = buildingRepository.findById(buildingId)
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "Building not found with id: " + buildingId
-                ));
+        EntityBuildings building = buildingRepository.findById(buildingId).orElseThrow(() -> new EntityNotFoundException("Building not found with id: " + buildingId));
 
         EntityFlats flat = flatsRepository.findDetailsById(flatId);
 
@@ -288,12 +280,32 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
             throw new IllegalArgumentException("Selected flat does not belong to selected building.");
         }
 
+        if (building.getLandlord() == null || !building.getLandlord().getId().equals(landlordId)) {
+            throw new SecurityException("You are not allowed to add rooms to this building.");
+        }
+
+        if (flat.getLandlord() == null || !flat.getLandlord().getId().equals(landlordId)) {
+            throw new SecurityException("You are not allowed to add rooms to this flat.");
+        }
+
+        int numberOfRoomsHasBeenSharedFromFlat=roomRepository.countByFlatIdAndDeletedFalse(flatId);
+
+        if(numberOfRoomsHasBeenSharedFromFlat >= flat.getNumberOfRooms()){
+
+            throw new IllegalArgumentException(
+                    "Cannot add another room. Flat ID " + flatId
+                            + " allows only " + flat.getNumberOfRooms()
+                            + " room(s)."
+            );
+        }
+
         validateFlatCanBeUsedAsRooms(flat);
 
         String cleanRoomNumber = extractCleanRoomNumber(room.getRoomNumber());
 
         validateRoomNumberAvailableInFlat(
-                flat.getId(),
+                building.getId(),
+                flat,
                 cleanRoomNumber,
                 room.getId()
         );
@@ -316,18 +328,25 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     private void assignRoomToHome(EntityRooms room, Long homeId, Long landlordId) {
         validateId(homeId, "Home id");
 
-        EntityHomes home = homeRepository.findById(homeId)
-                .orElseThrow(() -> new EntityNotFoundException(
-                        "Home not found with id: " + homeId
-                ));
+        EntityHomes home = homeRepository.findById(homeId).orElseThrow(() -> new EntityNotFoundException("Home not found with id: " + homeId));
+
+        if (home.getLandlord() == null || !home.getLandlord().getId().equals(landlordId)) {
+            throw new SecurityException("You are not allowed to add rooms to this house.");
+        }
 
         String cleanRoomNumber = extractCleanRoomNumber(room.getRoomNumber());
 
-        validateRoomNumberAvailableInHome(
-                home.getId(),
-                cleanRoomNumber,
-                room.getId()
-        );
+        validateRoomNumberAvailableInHome(home, cleanRoomNumber, room.getId());
+
+        int numberOfRoomsHasBeenSharedFromFlat=roomRepository.countByHomeIdAndDeletedFalse(homeId);
+
+        if(numberOfRoomsHasBeenSharedFromFlat >= home.getNumberOfRooms()){
+
+            throw new IllegalArgumentException(
+                    "Cannot add another room. Home ID " + homeId
+                            + " allows only " + home.getNumberOfRooms()
+                            + " room(s)."
+            );        }
 
         room.setRoomNumber(
                 "H-" + home.getId()
@@ -342,10 +361,9 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     }
 
     private void validateFlatCanBeUsedAsRooms(EntityFlats flat) {
-        String statusCode =
-                flat.getStatus() != null
-                        ? flat.getStatus().getCode()
-                        : null;
+        String statusCode = flat.getStatus() != null
+                                                ? flat.getStatus().getCode()
+                                                : null;
 
         if (statusCode == null) {
             throw new IllegalStateException("Flat status is missing.");
@@ -360,40 +378,26 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         }
 
         if (FLAT_STATUS_RENTED.equalsIgnoreCase(statusCode)) {
-            throw new IllegalStateException(
-                    "Cannot register rooms because this flat is rented as a whole flat."
-            );
+            throw new IllegalStateException("Cannot register rooms because this flat is rented as a whole flat.");
         }
 
         if (FLAT_STATUS_RESERVED.equalsIgnoreCase(statusCode)) {
-            throw new IllegalStateException(
-                    "Cannot register rooms because this flat is reserved as a whole flat."
-            );
+            throw new IllegalStateException("Cannot register rooms because this flat is reserved as a whole flat.");
         }
 
         if (FLAT_STATUS_UNDER_MAINTENANCE.equalsIgnoreCase(statusCode)) {
-            throw new IllegalStateException(
-                    "Cannot register rooms because this flat is under maintenance."
-            );
+            throw new IllegalStateException("Cannot register rooms because this flat is under maintenance.");
         }
 
         if (FLAT_STATUS_BLOCKED.equalsIgnoreCase(statusCode)) {
-            throw new IllegalStateException(
-                    "Cannot register rooms because this flat is blocked."
-            );
+            throw new IllegalStateException( "Cannot register rooms because this flat is blocked.");
         }
 
-        throw new IllegalStateException(
-                "Flat status does not allow room registration: " + statusCode
-        );
+        throw new IllegalStateException("Flat status does not allow room registration: " + statusCode);
     }
 
     private void markFlatAsAvailableAsRooms(EntityFlats flat) {
-        EntityUnitStatus availableAsRoomsStatus =
-                unitStatusService.getRequiredStatus(
-                        StatusDomain.UNIT,
-                        FLAT_STATUS_AVAILABLE_AS_ROOMS
-                );
+        EntityUnitStatus availableAsRoomsStatus = unitStatusService.getRequiredStatus(StatusDomain.UNIT, FLAT_STATUS_AVAILABLE_AS_ROOMS);
 
         flat.setStatus(availableAsRoomsStatus);
 
@@ -405,29 +409,21 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
             return;
         }
 
-        long remainingRooms =
-                roomRepository.countByFlatIdAndDeletedFalse(flat.getId());
+        long remainingRooms = roomRepository.countByFlatIdAndDeletedFalse(flat.getId());
 
         if (remainingRooms > 0) {
             markFlatAsAvailableAsRooms(flat);
             return;
         }
 
-        EntityUnitStatus availableStatus =
-                unitStatusService.getRequiredStatus(
-                        StatusDomain.UNIT,
-                        FLAT_STATUS_AVAILABLE
-                );
+        EntityUnitStatus availableStatus = unitStatusService.getRequiredStatus(StatusDomain.UNIT, FLAT_STATUS_AVAILABLE);
 
         flat.setStatus(availableStatus);
 
         flatsRepository.save(flat);
     }
 
-    private void refreshFlatStatusAfterRoomMove(
-            EntityFlats oldFlat,
-            EntityFlats newFlat
-    ) {
+    private void refreshFlatStatusAfterRoomMove(EntityFlats oldFlat, EntityFlats newFlat) {
         if (oldFlat != null && (newFlat == null || !oldFlat.getId().equals(newFlat.getId()))) {
             refreshFlatStatusAfterRoomDelete(oldFlat);
         }
@@ -449,71 +445,139 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     }
 
     private void validateRoomNumberAvailableInFlat(
-            Long flatId,
+            Long buildingId,
+            EntityFlats flat,
             String cleanRoomNumber,
             Long currentRoomId
     ) {
-        String finalRoomNumber = cleanRequired(cleanRoomNumber, "Room number is required.");
+        String generatedRoomNumber =
+                "B-" + buildingId
+                        + "_F-" + flat.getFlatNumber()
+                        + "_R-" + cleanRoomNumber;
 
-        boolean exists = roomRepository.existsByFlatIdAndRoomNumberIgnoreCaseAndDeletedFalse(
-                flatId,
-                finalRoomNumber
-        );
+        boolean exists = roomRepository
+                .existsByFlatIdAndRoomNumberIgnoreCaseAndDeletedFalse(
+                        flat.getId(),
+                        generatedRoomNumber
+                );
 
         if (!exists) {
             return;
         }
 
         if (currentRoomId == null) {
-            throw new IllegalStateException("Room number already exists in this flat.");
+            throw new IllegalStateException(
+                    "Room number already exists in this flat."
+            );
         }
 
         EntityRooms currentRoom = roomRepository.findDetailsById(currentRoomId);
 
-        if (
+        boolean sameRoom =
                 currentRoom != null
                         && currentRoom.getFlat() != null
-                        && currentRoom.getFlat().getId().equals(flatId)
-                        && extractCleanRoomNumber(currentRoom.getRoomNumber()).equalsIgnoreCase(finalRoomNumber)
-        ) {
-            return;
-        }
+                        && currentRoom.getFlat().getId().equals(flat.getId())
+                        && generatedRoomNumber.equalsIgnoreCase(
+                        currentRoom.getRoomNumber()
+                );
 
-        throw new IllegalStateException("Room number already exists in this flat.");
+        if (!sameRoom) {
+            throw new IllegalStateException(
+                    "Room number already exists in this flat."
+            );
+        }
     }
 
     private void validateRoomNumberAvailableInHome(
-            Long homeId,
+            EntityHomes home,
             String cleanRoomNumber,
             Long currentRoomId
     ) {
-        String finalRoomNumber = cleanRequired(cleanRoomNumber, "Room number is required.");
+        String generatedRoomNumber =
+                "H-" + home.getId()
+                        + "_R-" + cleanRoomNumber;
 
-        boolean exists = roomRepository.existsByHomeIdAndRoomNumberIgnoreCaseAndDeletedFalse(
-                homeId,
-                finalRoomNumber
-        );
+        boolean exists = roomRepository
+                .existsByHomeIdAndRoomNumberIgnoreCaseAndDeletedFalse(
+                        home.getId(),
+                        generatedRoomNumber
+                );
 
         if (!exists) {
             return;
         }
 
         if (currentRoomId == null) {
-            throw new IllegalStateException("Room number already exists in this home.");
+            throw new IllegalStateException(
+                    "Room number already exists in this house."
+            );
         }
 
         EntityRooms currentRoom = roomRepository.findDetailsById(currentRoomId);
 
-        if (
+        boolean sameRoom =
                 currentRoom != null
                         && currentRoom.getHome() != null
-                        && currentRoom.getHome().getId().equals(homeId)
-                        && extractCleanRoomNumber(currentRoom.getRoomNumber()).equalsIgnoreCase(finalRoomNumber)
-        ) {
+                        && currentRoom.getHome().getId().equals(home.getId())
+                        && generatedRoomNumber.equalsIgnoreCase(
+                        currentRoom.getRoomNumber()
+                );
+
+        if (!sameRoom) {
+            throw new IllegalStateException(
+                    "Room number already exists in this house."
+            );
+        }
+    }
+
+    private void refreshHomeStatus(EntityHomes home) {
+        if (home == null) {
             return;
         }
 
-        throw new IllegalStateException("Room number already exists in this home.");
+        List<EntityRooms> activeRooms =
+                roomRepository.findDetailsByHomeId(home.getId())
+                        .stream()
+                        .filter(room -> !Boolean.TRUE.equals(room.isDeleted()))
+                        .toList();
+
+        EntityUnitStatus newStatus;
+
+        if (activeRooms.isEmpty()) {
+            newStatus = unitStatusService.getRequiredStatus(
+                    StatusDomain.HOME,
+                    HOME_AVAILABLE
+            );
+        } else {
+            long rentedRooms = activeRooms.stream()
+                    .filter(room ->
+                            room.getStatus() != null
+                                    && ROOM_RENTED.equalsIgnoreCase(
+                                    room.getStatus().getCode()
+                            )
+                    )
+                    .count();
+
+            if (rentedRooms == 0) {
+                newStatus = unitStatusService.getRequiredStatus(
+                        StatusDomain.HOME,
+                        HOME_AVAILABLE_AS_ROOMS
+                );
+            } else if (rentedRooms == activeRooms.size()) {
+                newStatus = unitStatusService.getRequiredStatus(
+                        StatusDomain.HOME,
+                        HOME_FULLY_RENTED_AS_ROOMS
+                );
+            } else {
+                newStatus = unitStatusService.getRequiredStatus(
+                        StatusDomain.HOME,
+                        HOME_PARTIALLY_RENTED_AS_ROOMS
+                );
+            }
+        }
+
+        home.setStatus(newStatus);
+        homeRepository.save(home);
     }
 
     private RoomDetailsDTO toDTO(EntityRooms room) {
@@ -548,48 +612,57 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
                 .regionId(
                         fromFlat && building.getRegion() != null
                                 ? building.getRegion().getId()
+                                : fromHome ? home.getRegion().getId()
                                 : null
                 )
                 .region(
                         fromFlat && building.getRegion() != null
                                 ? building.getRegion().getNameEn()
-                                : fromHome ? home.getRegion() : null
+                                : fromHome ? home.getRegion().getNameEn()
+                                : null
                 )
                 .regionAr(
                         fromFlat && building.getRegion() != null
                                 ? building.getRegion().getNameAr()
+                                : fromHome ? home.getRegion().getNameAr()
                                 : null
                 )
 
                 .wilayaId(
                         fromFlat && building.getWilaya() != null
                                 ? building.getWilaya().getId()
+                                : fromHome ? home.getWilaya().getId()
                                 : null
                 )
                 .wilaya(
                         fromFlat && building.getWilaya() != null
                                 ? building.getWilaya().getNameEn()
-                                : fromHome ? home.getWilaya() : null
+                                : fromHome ? home.getWilaya().getNameEn()
+                                : null
                 )
                 .wilayaAr(
                         fromFlat && building.getWilaya() != null
                                 ? building.getWilaya().getNameAr()
+                                : fromHome ? home.getWilaya().getNameAr()
                                 : null
                 )
 
                 .areaId(
                         fromFlat && building.getArea() != null
                                 ? building.getArea().getId()
+                                : fromHome ? home.getArea().getId()
                                 : null
                 )
                 .area(
                         fromFlat && building.getArea() != null
                                 ? building.getArea().getNameEn()
-                                : fromHome ? home.getLocation() : null
+                                : fromHome ? home.getArea().getNameEn()
+                                : null
                 )
                 .areaAr(
                         fromFlat && building.getArea() != null
                                 ? building.getArea().getNameAr()
+                                : fromHome ? home.getArea().getNameAr()
                                 : null
                 )
 

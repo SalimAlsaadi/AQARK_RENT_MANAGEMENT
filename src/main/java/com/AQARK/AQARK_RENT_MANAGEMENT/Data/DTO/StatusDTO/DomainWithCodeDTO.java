@@ -1,6 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

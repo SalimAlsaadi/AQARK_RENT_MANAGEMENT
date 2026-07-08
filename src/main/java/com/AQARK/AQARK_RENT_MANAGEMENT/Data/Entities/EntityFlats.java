@@ -47,7 +47,7 @@ public class EntityFlats {
     private List<EntityRooms> rooms = new ArrayList<>();
 
     @Column(name = "number_of_rooms", nullable = false, length = 50)
-    private String numberOfRooms;
+    private Integer numberOfRooms;
 
     @Column(name = "number_of_bathrooms", nullable = false, length = 50)
     private String numberOfBathrooms;

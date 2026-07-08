@@ -26,17 +26,6 @@ public class RoomsController {
     private final RoomsServicesInterface roomService;
     private final ObjectMapper objectMapper;
 
-//    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-//    public RoomDetailsDTO createRoom(@RequestPart("room") String roomJson, @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures) throws IOException {
-//
-//        RoomSaveRequestDTO dto = objectMapper.readValue(roomJson, RoomSaveRequestDTO.class);
-//
-//        return roomService.createRoom(
-//                dto,
-//                safeFiles(pictures)
-//        );
-//    }
-
     @PutMapping(value = "/updateRoom", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public RoomDetailsDTO updateRoom(@RequestBody RoomIdDTO room, @RequestPart("room") String roomJson,
             @RequestPart(value = "newPictures", required = false) List<MultipartFile> newPictures,

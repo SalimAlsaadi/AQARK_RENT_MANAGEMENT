@@ -4,6 +4,8 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.PropertyMediaService;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.BuildingServicesInterface;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;

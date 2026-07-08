@@ -2,9 +2,9 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingSaveRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatSaveRequestDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeSaveRequestDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeCreateRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.PropertyType;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +59,7 @@ public class PropertyCommonServices implements PropertyCommonServiceInterface {
             );
 
             case HOME -> homeService.createHome(
-                    objectMapper.readValue(data, HomeSaveRequestDTO.class),
+                    objectMapper.readValue(data, HomeCreateRequestDTO.class),
                     safePictures,
                     landlordId
             );

@@ -19,4 +19,6 @@ public interface UnitStatusRepository extends JpaRepository<EntityUnitStatus, Lo
     List<EntityUnitStatus> findByActiveTrueOrderByStatusDomainAscNameEnAsc();
 
     List<EntityUnitStatus> findAllByOrderByStatusDomainAscNameEnAsc();
+
+    Optional<EntityUnitStatus> findByStatusDomainAndCodeAndActiveTrue(String statusDomain, String code);
 }

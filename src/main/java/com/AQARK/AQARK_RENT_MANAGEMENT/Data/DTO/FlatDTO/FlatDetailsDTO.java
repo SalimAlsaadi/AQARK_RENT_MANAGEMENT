@@ -15,7 +15,7 @@ public class FlatDetailsDTO {
     private Long id;
 
     private String flatNumber;
-    private String numberOfRooms;
+    private Integer numberOfRooms;
     private String numberOfBathrooms;
     private Boolean hasLivingRoom;
 

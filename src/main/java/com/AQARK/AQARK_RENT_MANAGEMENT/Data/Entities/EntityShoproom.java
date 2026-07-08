@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.CommercialType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -100,9 +101,7 @@ public class EntityShoproom {
             this.shopNumber = this.shopNumber.trim();
         }
 
-        if (this.commercialType == null) {
-            this.commercialType = CommercialType.GENERAL_SHOP;
-        }
+
     }
 
     @PreUpdate

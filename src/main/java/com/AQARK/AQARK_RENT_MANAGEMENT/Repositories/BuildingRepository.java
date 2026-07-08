@@ -71,7 +71,7 @@ public interface BuildingRepository extends JpaRepository<EntityBuildings, Long>
             ISNULL(s.shopsUnderMaintenance, 0) AS shopsUnderMaintenance,
             ISNULL(s.shopsBlocked, 0) AS shopsBlocked
 
-        FROM app_root.buildings b
+        FROM dbo.buildings b
 
         OUTER APPLY (
             SELECT
@@ -81,8 +81,8 @@ public interface BuildingRepository extends JpaRepository<EntityBuildings, Long>
                 SUM(CASE WHEN us.code = 'RESERVED' THEN 1 ELSE 0 END) AS flatsReserved,
                 SUM(CASE WHEN us.code = 'UNDER_MAINTENANCE' THEN 1 ELSE 0 END) AS flatsUnderMaintenance,
                 SUM(CASE WHEN us.code = 'BLOCKED' THEN 1 ELSE 0 END) AS flatsBlocked
-            FROM app_root.entity_flats ef
-            JOIN app_root.unit_statuses us ON us.id = ef.status_id
+            FROM dbo.entity_flats ef
+            JOIN dbo.unit_statuses us ON us.id = ef.status_id
             WHERE ef.building_id = b.id
         ) f
 
@@ -94,9 +94,9 @@ public interface BuildingRepository extends JpaRepository<EntityBuildings, Long>
                 SUM(CASE WHEN us.code = 'RESERVED' THEN 1 ELSE 0 END) AS roomsReserved,
                 SUM(CASE WHEN us.code = 'UNDER_MAINTENANCE' THEN 1 ELSE 0 END) AS roomsUnderMaintenance,
                 SUM(CASE WHEN us.code = 'BLOCKED' THEN 1 ELSE 0 END) AS roomsBlocked
-            FROM app_root.rooms er
-            JOIN app_root.entity_flats ef ON ef.id = er.flat_id
-            JOIN app_root.unit_statuses us ON us.id = er.status_id
+            FROM dbo.rooms er
+            JOIN dbo.entity_flats ef ON ef.id = er.flat_id
+            JOIN dbo.unit_statuses us ON us.id = er.status_id
             WHERE ef.building_id = b.id
         ) r
 
@@ -108,8 +108,8 @@ public interface BuildingRepository extends JpaRepository<EntityBuildings, Long>
                 SUM(CASE WHEN us.code = 'RESERVED' THEN 1 ELSE 0 END) AS shopsReserved,
                 SUM(CASE WHEN us.code = 'UNDER_MAINTENANCE' THEN 1 ELSE 0 END) AS shopsUnderMaintenance,
                 SUM(CASE WHEN us.code = 'BLOCKED' THEN 1 ELSE 0 END) AS shopsBlocked
-            FROM app_root.shop_rooms es
-            JOIN app_root.unit_statuses us ON us.id = es.status_id
+            FROM dbo.shop_rooms es
+            JOIN dbo.unit_statuses us ON us.id = es.status_id
             WHERE es.building_id = b.id
         ) s
 

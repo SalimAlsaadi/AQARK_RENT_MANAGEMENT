@@ -4,7 +4,8 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Common_Utilities.PropertyMediaService;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.FlatsServicesInterface;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
@@ -55,7 +56,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
         EntityFlats flat = EntityFlats.builder()
                 .flatNumber(cleanRequired(dto.getFlatNumber(), "Flat number is required"))
-                .numberOfRooms(cleanRequired(dto.getNumberOfRooms(), "Number of rooms is required"))
+                .numberOfRooms(dto.getNumberOfRooms())
                 .numberOfBathrooms(cleanRequired(dto.getNumberOfBathrooms(), "Number of bathrooms is required"))
                 .hasLivingRoom(Boolean.TRUE.equals(dto.getHasLivingRoom()))
                 .status(status)
@@ -124,7 +125,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
         flat.setBuilding(building);
         flat.setFlatNumber(cleanRequired(dto.getFlatNumber(), "Flat number is required"));
-        flat.setNumberOfRooms(cleanRequired(dto.getNumberOfRooms(), "Number of rooms is required"));
+        flat.setNumberOfRooms(dto.getNumberOfRooms());
         flat.setNumberOfBathrooms(cleanRequired(dto.getNumberOfBathrooms(), "Number of bathrooms is required"));
         flat.setHasLivingRoom(Boolean.TRUE.equals(dto.getHasLivingRoom()));
         flat.setStatus(resolveUnitStatus(dto.getStatusCode()));
@@ -290,7 +291,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
             throw new IllegalArgumentException("Flat number is required.");
         }
 
-        if (isBlank(dto.getNumberOfRooms())) {
+        if ((dto.getNumberOfRooms())== null || dto.getNumberOfRooms()<=0) {
             throw new IllegalArgumentException("Number of rooms is required.");
         }
 

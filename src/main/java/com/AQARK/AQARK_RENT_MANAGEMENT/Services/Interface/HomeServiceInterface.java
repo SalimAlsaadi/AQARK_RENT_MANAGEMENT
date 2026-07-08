@@ -1,7 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface;
 
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeDetailsDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeSaveRequestDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -9,15 +8,17 @@ import java.util.List;
 
 public interface HomeServiceInterface {
 
-    HomeDetailsDTO createHome(HomeSaveRequestDTO dto, List<MultipartFile> pictures, Long landlordId) throws IOException;
+    HomeDetailsDTO createHome(HomeCreateRequestDTO dto, List<MultipartFile> pictures, Long authenticatedLandlordId) throws IOException;
 
-    HomeDetailsDTO updateHome( HomeSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete) throws IOException;
+    HomeDetailsDTO updateHome(HomeUpdateRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete, Long authenticatedLandlordId) throws IOException;
 
-    HomeDetailsDTO getHomeById(Long homeId);
+    HomeDetailsDTO changeHomeStatus(HomeChangeStatusRequestDTO dto, Long authenticatedLandlordId);
+
+    HomeDetailsDTO getHomeById(Long homeId, Long authenticatedLandlordId);
 
     List<HomeDetailsDTO> getAllHomes();
 
-    List<HomeDetailsDTO> getHomesByLandlord(Long landlordId);
+    List<HomeDetailsDTO> getHomesByLandlord(Long landlordId, Long authenticatedLandlordId);
 
-    void deleteHomeById(Long homeId);
+    void deleteHome(Long homeId, Long authenticatedLandlordId);
 }
