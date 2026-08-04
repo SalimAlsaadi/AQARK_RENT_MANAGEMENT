@@ -16,11 +16,20 @@ public interface FlatsServicesInterface {
 
     List<FlatDetailsDTO> getFlatsByBuildingId(Long buildingId);
 
+    List<FlatDetailsDTO> getFlatsByHomeId(Long homeId);
+
     List<FlatDetailsDTO> getFlatsByLandlordId(Long landlordId);
 
     List<FlatListDTO> getFlatListByBuildingId(Long buildingId);
 
+    List<FlatListDTO> getFlatListByHomeId(Long homeId);
+
     List<FlatDetailsDTO> searchFlats(FlatSearchRequestDTO filter);
 
     void deleteFlat(Long flatId);
+
+    void refreshFlatState(Long flatId);
+
+    void validateFlatRoomCapacity(Long flatId, Long excludedRoomId);
+
 }

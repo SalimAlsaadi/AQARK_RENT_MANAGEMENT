@@ -1,6 +1,7 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.*;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.HomeRentalStructure;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -16,9 +17,16 @@ public interface HomeServiceInterface {
 
     HomeDetailsDTO getHomeById(Long homeId, Long authenticatedLandlordId);
 
-    List<HomeDetailsDTO> getAllHomes();
+    List<HomeListDTO> getAllHomes();
 
-    List<HomeDetailsDTO> getHomesByLandlord(Long landlordId, Long authenticatedLandlordId);
+    List<HomeListDTO> getHomesByLandlord(Long landlordId);
 
     void deleteHome(Long homeId, Long authenticatedLandlordId);
+
+    void refreshHomeState(Long homeId);
+
+    HomeRentalStructure calculateHomeStructure(Long homeId);
+
+
+
 }

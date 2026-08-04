@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusLevel;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -38,6 +39,10 @@ public class EntityUnitStatus {
 
     @Column(name = "status_domain", nullable = false, length = 50)
     private String statusDomain;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status_level", nullable = false, length = 1)
+    private StatusLevel statusLevel;
 
     @Column(name = "code", nullable = false, length = 100)
     private String code;

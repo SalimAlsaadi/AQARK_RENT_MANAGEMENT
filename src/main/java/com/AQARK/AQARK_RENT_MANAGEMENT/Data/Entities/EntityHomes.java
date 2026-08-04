@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.HomeRentalStructure;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.HomeType;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
@@ -7,6 +8,8 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(
@@ -15,7 +18,8 @@ import java.time.LocalDateTime;
                 @Index(name = "IX_entity_home_landlord_id", columnList = "landlord_id"),
                 @Index(name = "IX_entity_home_status_id", columnList = "status_id"),
                 @Index(name = "IX_entity_home_active_deleted", columnList = "active, deleted"),
-                @Index(name = "IX_entity_home_region_wilaya", columnList = "region_id, wilaya_id")
+                @Index(name = "IX_entity_home_region_wilaya", columnList = "region_id, wilaya_id"),
+                @Index(name = "IX_entity_home_rental_structure", columnList = "rental_structure")
         }
 )
 @Getter
@@ -33,6 +37,11 @@ public class EntityHomes {
     @Enumerated(EnumType.STRING)
     @Column(name = "home_type", nullable = false, length = 100)
     private HomeType homeType;
+
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rental_structure", nullable = false, length = 50)
+    private HomeRentalStructure rentalStructure;
 
     @Column(name = "home_number", length = 50)
     private String homeNumber;
@@ -82,38 +91,49 @@ public class EntityHomes {
     @Column(name = "longitude")
     private Double longitude;
 
-    @NotBlank
-    @Column(name = "tenant_type", nullable = false, length = 100)
+
+    @Column(name = "tenant_type",  length = 20)
     private String tenantType;
 
-    @NotBlank
-    @Column(name = "rent_type", nullable = false, length = 100)
+
+    @Column(name = "rent_type",  length = 20)
     private String rentType;
 
-    @NotNull
+
     @DecimalMin(value = "0.000", inclusive = true)
-    @Column(name = "price", nullable = false, precision = 18, scale = 3)
+    @Column(name = "price",  precision = 18, scale = 3)
     private BigDecimal price;
 
-    /*
-     * HOME status:
-     * AVAILABLE
-     * AVAILABLE_AS_ROOMS
-     * PARTIALLY_RENTED_AS_ROOMS
-     * FULLY_RENTED_AS_ROOMS
-     * RENTED
-     * MAINTENANCE
-     * INACTIVE
-     */
+
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "status_id", nullable = false)
     private EntityUnitStatus status;
 
+
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "landlord_id", nullable = false)
     private EntityUser landlord;
+
+    //late i will check why we need arrayList
+    @OneToMany(mappedBy = "home", fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<EntityFlats> flats = new ArrayList<>();
+
+
+    /*
+     * Includes:
+     *
+     * - direct/annex home rooms
+     * - rooms inside home flats
+     *
+     * Home-flat rooms retain home_id.
+     */
+    //late i will check why we need arrayList
+    @OneToMany(mappedBy = "home", fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<EntityRooms> rooms = new ArrayList<>();
 
     @Column(name = "active", nullable = false)
     private boolean active = true;
@@ -127,6 +147,8 @@ public class EntityHomes {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     @PrePersist
     protected void onCreate() {

@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusLevel;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -16,6 +17,8 @@ public class UnitStatusSaveRequestDTO {
     @NotBlank(message = "Status code is required")
     @Size(max = 100, message = "Status code must not exceed 100 characters")
     private String code;
+
+    private StatusLevel statusLevel;
 
     @NotBlank(message = "English status name is required")
     @Size(max = 150, message = "English name must not exceed 150 characters")

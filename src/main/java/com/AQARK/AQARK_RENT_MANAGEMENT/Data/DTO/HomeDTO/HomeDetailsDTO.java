@@ -3,6 +3,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.LocationDTO.LocationDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO.UnitStatusDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.HomeRentalStructure;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.HomeType;
 import lombok.*;
 
@@ -20,6 +21,7 @@ public class HomeDetailsDTO {
     private Long id;
 
     private HomeType homeType;
+    private HomeRentalStructure rentalStructure;
     private String homeNumber;
 
     private Integer numberOfRooms;
@@ -32,14 +34,15 @@ public class HomeDetailsDTO {
 
     private LocationDTO location;
 
-    private Double latitude;
-    private Double longitude;
+    private HomeUnitCountsDTO unitCounts;
+
+    private UnitStatusDTO status;
 
     private String tenantType;
     private String rentType;
     private BigDecimal price;
 
-    private UnitStatusDTO status;
+
 
     private Long landlordId;
     private String landlordName;

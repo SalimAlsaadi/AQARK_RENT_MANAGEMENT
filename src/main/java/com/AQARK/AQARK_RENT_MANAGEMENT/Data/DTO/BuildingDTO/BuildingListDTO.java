@@ -3,6 +3,8 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.List;
+
 @Getter
 @Builder
 public class BuildingListDTO {
@@ -32,5 +34,5 @@ public class BuildingListDTO {
     private long rentedUnits;
     private long maintenanceUnits;
 
-    private String mainImageUrl;
+    private List<String> mainImageUrl;
 }

@@ -2,6 +2,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.*;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.FlatsServicesInterface;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -48,9 +49,19 @@ public class FlatsController {
         return flatsService.getFlatsByBuildingId(building.getBuildingId());
     }
 
+    @PostMapping("/getFlatsByHomeId")
+    public List<FlatDetailsDTO> getFlatsByHomeId(@RequestBody HomeIdDTO home){
+        return flatsService.getFlatsByHomeId(home.getHomeId());
+    }
+
     @PostMapping("/getFlatListByBuildingId")
     public List<FlatListDTO> getFlatListByBuildingId(@RequestBody BuildingIdDTO building) {
         return flatsService.getFlatListByBuildingId(building.getBuildingId());
+    }
+
+    @PostMapping("/getFlatListByHomeId")
+    public List<FlatListDTO> getFlatListByHomeId(@RequestBody HomeIdDTO home){
+        return flatsService.getFlatListByHomeId(home.getHomeId());
     }
 
     @GetMapping("/landlord/{landlordId}")

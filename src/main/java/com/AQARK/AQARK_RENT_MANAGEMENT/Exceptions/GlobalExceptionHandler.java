@@ -1,5 +1,7 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import jakarta.persistence.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,46 +28,97 @@ public class GlobalExceptionHandler {
         ));
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<?> handleIllegalArgument(IllegalArgumentException ex) {
-        log.warn("Invalid request: {}", ex.getMessage());
+    @ExceptionHandler(FieldValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleFieldValidation(
+            FieldValidationException exception
+    ) {
+        return ResponseEntity
+                .badRequest()
+                .body(
+                        ApiResponse.fieldFailure(
+                                exception.getMessage(),
+                                exception.getFieldErrors()
+                        )
+                );
+    }
 
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "success", false,
-                "message", ex.getMessage(),
-                "timestamp", LocalDateTime.now()
-        ));
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(
+            IllegalArgumentException exception
+    ) {
+        return ResponseEntity
+                .badRequest()
+                .body(
+                        ApiResponse.failure(
+                                exception.getMessage()
+                        )
+                );
+    }
+
+    @ExceptionHandler(BusinessConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusinessConflict(
+            BusinessConflictException exception
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(
+                        ApiResponse.failure(
+                                exception.getMessage()
+                        )
+                );
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEntityNotFound(
+            EntityNotFoundException exception
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(
+                        ApiResponse.failure(
+                                exception.getMessage()
+                        )
+                );
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<?> handleAccessDenied(AccessDeniedException ex) {
-        log.warn("Access denied: {}", ex.getMessage());
-
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                "success", false,
-                "message", "Access denied",
-                "timestamp", LocalDateTime.now()
-        ));
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(
+            AccessDeniedException exception
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(
+                        ApiResponse.failure(
+                                "You are not allowed to perform this action."
+                        )
+                );
     }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<?> handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = ex.getBindingResult()
-                .getFieldErrors()
-                .stream()
-                .collect(Collectors.toMap(
-                        error -> error.getField(),
-                        error -> error.getDefaultMessage(),
-                        (first, second) -> first
-                ));
+    @ExceptionHandler(JsonProcessingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidJson(
+            JsonProcessingException exception
+    ) {
+        return ResponseEntity
+                .badRequest()
+                .body(
+                        ApiResponse.failure(
+                                "Invalid property data format."
+                        )
+                );
+    }
 
-        log.warn("Validation failed: {}", errors);
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnexpectedException(
+            Exception exception
+    ) {
+        exception.printStackTrace();
 
-        return ResponseEntity.badRequest().body(Map.of(
-                "success", false,
-                "message", "Validation failed",
-                "errors", errors,
-                "timestamp", LocalDateTime.now()
-        ));
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(
+                        ApiResponse.failure(
+                                "Unexpected server error. Please contact support."
+                        )
+                );
     }
 }

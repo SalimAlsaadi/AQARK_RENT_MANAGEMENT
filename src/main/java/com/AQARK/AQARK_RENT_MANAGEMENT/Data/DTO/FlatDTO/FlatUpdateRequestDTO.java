@@ -29,6 +29,12 @@ public class FlatUpdateRequestDTO {
 
     private Boolean hasLivingRoom = false;
 
+    private boolean hasAC = false;
+
+    private boolean hasWIFI = false;
+
+    private boolean isFurnished = false;
+
     private String statusCode;
 
     @NotBlank(message = "Floor number is required")
@@ -52,4 +58,6 @@ public class FlatUpdateRequestDTO {
     private String mobileNumber;
 
     private Long buildingId;
+
+    private Long homeId;
 }

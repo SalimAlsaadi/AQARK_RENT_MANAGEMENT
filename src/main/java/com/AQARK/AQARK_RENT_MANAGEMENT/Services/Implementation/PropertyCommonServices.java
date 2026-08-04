@@ -10,16 +10,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
+import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.FieldValidationException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Validator;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class PropertyCommonServices implements PropertyCommonServiceInterface {
 
     private final ObjectMapper objectMapper;
+    private final Validator validator;
 
     private final BuildingServicesInterface buildingService;
     private final FlatsServicesInterface flatService;
@@ -29,7 +35,12 @@ public class PropertyCommonServices implements PropertyCommonServiceInterface {
     // private final ShopServiceInterface shopService;
 
     @Override
-    public Object create(String propertyType, String data, List<MultipartFile> pictures, Long landlordId) throws IOException {
+    public Object create(
+            String propertyType,
+            String data,
+            List<MultipartFile> pictures,
+            Long landlordId
+    ) throws IOException {
 
         PropertyType type = parsePropertyType(propertyType);
 
@@ -41,31 +52,30 @@ public class PropertyCommonServices implements PropertyCommonServiceInterface {
             throw new IllegalArgumentException("Landlord id is required.");
         }
 
-        List<MultipartFile> safePictures =
-                pictures == null ? Collections.emptyList() : pictures;
+        List<MultipartFile> safePictures = pictures == null ? Collections.emptyList() : pictures;
 
         return switch (type) {
 
             case BUILDING -> buildingService.createBuilding(
-                    objectMapper.readValue(data, BuildingSaveRequestDTO.class),
+                    readAndValidate(data, BuildingSaveRequestDTO.class),
                     safePictures,
                     landlordId
             );
 
             case FLAT -> flatService.createFlat(
-                    objectMapper.readValue(data, FlatSaveRequestDTO.class),
+                    readAndValidate(data, FlatSaveRequestDTO.class),
                     safePictures,
                     landlordId
             );
 
             case HOME -> homeService.createHome(
-                    objectMapper.readValue(data, HomeCreateRequestDTO.class),
+                    readAndValidate(data, HomeCreateRequestDTO.class),
                     safePictures,
                     landlordId
             );
 
             case ROOM -> roomService.createRoom(
-                    objectMapper.readValue(data, RoomSaveRequestDTO.class),
+                    readAndValidate(data, RoomSaveRequestDTO.class),
                     safePictures,
                     landlordId
             );
@@ -75,6 +85,8 @@ public class PropertyCommonServices implements PropertyCommonServiceInterface {
             );
         };
     }
+
+
 
     private PropertyType parsePropertyType(String propertyType) {
         if (propertyType == null || propertyType.trim().isEmpty()) {
@@ -88,6 +100,40 @@ public class PropertyCommonServices implements PropertyCommonServiceInterface {
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(
                     "Unsupported property type: " + propertyType
+            );
+        }
+    }
+
+
+
+    private <T> T readAndValidate(
+            String data,
+            Class<T> dtoClass
+    ) throws JsonProcessingException {
+
+        T dto = objectMapper.readValue(data, dtoClass);
+
+        validateDto(dto);
+
+        return dto;
+    }
+
+    private <T> void validateDto(T dto) {
+
+        Map<String, String> fieldErrors = validator.validate(dto)
+                .stream()
+                .collect(
+                        Collectors.toMap(
+                                violation -> violation.getPropertyPath().toString(),
+                                ConstraintViolation::getMessage,
+                                (first, second) -> first
+                        )
+                );
+
+        if (!fieldErrors.isEmpty()) {
+            throw new FieldValidationException(
+                    "Please complete all required fields correctly.",
+                    fieldErrors
             );
         }
     }

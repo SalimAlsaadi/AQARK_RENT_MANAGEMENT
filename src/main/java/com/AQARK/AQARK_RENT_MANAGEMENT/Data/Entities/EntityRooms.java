@@ -6,6 +6,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Entity
 @Table(
@@ -93,20 +94,40 @@ public class EntityRooms {
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
-    @AssertTrue(message = "Room must belong either to building + flat, or to home only.")
+
+
+    @AssertTrue(message = "Room parent combination(home and building) is invalid.")
     public boolean isParentValid() {
-        boolean belongsToFlat =
+        boolean directBuildingRoom =
                 building != null &&
-                        flat != null &&
+                        flat == null &&
                         home == null;
 
-        boolean belongsToHome =
+        boolean buildingFlatRoom =
+                building != null &&
+                        flat != null &&
+                        home == null &&
+                        flat.getBuilding() != null &&
+                        Objects.equals(flat.getBuilding().getId(), building.getId());
+
+        boolean directHomeRoom =
                 building == null &&
                         flat == null &&
                         home != null;
 
-        return belongsToFlat || belongsToHome;
+        boolean homeFlatRoom =
+                building == null &&
+                        flat != null &&
+                        home != null &&
+                        flat.getHome() != null &&
+                        Objects.equals(flat.getHome().getId(), home.getId());
+
+        return directBuildingRoom
+                || buildingFlatRoom
+                || directHomeRoom
+                || homeFlatRoom;
     }
+
 
 
     //later i will use BaseEntity instead this
