@@ -1,55 +1,63 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO;
 
 import jakarta.validation.constraints.*;
-import lombok.*;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 
 @Getter
 @Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
 public class FlatSaveRequestDTO {
 
-    @NotBlank(message = "Flat number is required")
-    @Size(max = 50, message = "Flat number must not exceed 50 characters")
+
+    @NotBlank(message = "Flat number is required.")
+    @Size(max = 50, message = "Flat number cannot exceed 50 characters.")
     private String flatNumber;
 
-    @NotBlank(message = "Number of rooms is required")
-    @Size(max = 50, message = "Number of rooms must not exceed 50 characters")
+    @NotNull(message = "Number of rooms is required.")
+    @Min(value = 1, message = "Number of rooms must be at least 1.")
+    @Max(value = 100, message = "Number of rooms cannot exceed 100.")
     private Integer numberOfRooms;
 
-    @NotBlank(message = "Number of bathrooms is required")
-    @Size(max = 50, message = "Number of bathrooms must not exceed 50 characters")
+    @NotBlank(message = "Number of bathrooms is required.")
     private String numberOfBathrooms;
 
-    private Boolean hasLivingRoom = false;
+    private Boolean hasLivingRoom;
 
+    private Boolean hasAC;
+
+    private Boolean hasWIFI;
+
+    private Boolean isFurnished;
+
+    @NotBlank(message = "Status is required.")
     private String statusCode;
 
-    @NotBlank(message = "Floor number is required")
-    @Size(max = 50, message = "Floor number must not exceed 50 characters")
+    @NotBlank(message = "Floor number is required.")
     private String floorNumber;
 
-    @Size(max = 1000, message = "Description must not exceed 1000 characters")
+
+    @Size(max = 2000, message = "Description cannot exceed 2000 characters.")
     private String description;
 
-    @Size(max = 100, message = "Tenant type must not exceed 100 characters")
+    @NotBlank(message = "Tenant type is required.")
     private String tenantType;
 
-    @Size(max = 100, message = "Rent time type must not exceed 100 characters")
+    @NotBlank(message = "Rent time type is required.")
     private String rentTimeType;
 
-    @NotNull(message = "Price is required")
-    @DecimalMin(value = "0.000", message = "Price cannot be negative")
+    @NotNull(message = "Price is required.")
+    @DecimalMin(value = "0.000", message = "Price cannot be negative.")
     private BigDecimal price;
 
-    @Size(max = 30, message = "Mobile number must not exceed 30 characters")
+    @NotBlank(message = "Mobile number is required.")
+    @Pattern(regexp = "^9\\d{7}$", message = "Mobile number must be 8 digits and start with 9.")
     private String mobileNumber;
 
     private Long landlordId;
 
-    @NotNull(message = "Building id is required")
     private Long buildingId;
+
+    private Long homeId;
 }

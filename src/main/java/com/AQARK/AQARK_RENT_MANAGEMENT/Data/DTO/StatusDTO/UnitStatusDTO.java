@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusLevel;
 import lombok.*;
 
 @Getter
@@ -14,6 +15,7 @@ public class UnitStatusDTO {
     private String statusDomain;
     private String code;
 
+    private StatusLevel statusLevel;
     private String nameEn;
     private String nameAr;
 

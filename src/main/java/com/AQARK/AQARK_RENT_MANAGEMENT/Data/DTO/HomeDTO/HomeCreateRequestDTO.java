@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.HomeRentalStructure;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.HomeType;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -15,6 +16,9 @@ public class  HomeCreateRequestDTO {
 
     @NotNull(message = "Home type is required.")
     private HomeType homeType;
+
+    @NotNull(message = "Home rental structure is required.")
+    private HomeRentalStructure rentalStructure;
 
     @Size(max = 50, message = "Home number cannot exceed 50 characters.")
     private String homeNumber;
@@ -62,24 +66,20 @@ public class  HomeCreateRequestDTO {
     @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180.")
     private Double longitude;
 
-    @NotBlank(message = "Tenant type is required.")
+
     @Size(max = 100, message = "Tenant type cannot exceed 100 characters.")
     private String tenantType;
 
-    @NotBlank(message = "Rent type is required.")
+
     @Size(max = 100, message = "Rent type cannot exceed 100 characters.")
     private String rentTimeType;
 
-    @NotNull(message = "Price is required.")
+
     @DecimalMin(value = "0.000", inclusive = true, message = "Price cannot be negative.")
     @Digits(integer = 15, fraction = 3, message = "Price supports maximum 15 digits and 3 decimal places.")
     private BigDecimal price;
 
-    /*
-     * Optional.
-     * If null, system uses HOME / AVAILABLE.
-     * Allowed manually: DRAFT, AVAILABLE, MAINTENANCE, INACTIVE.
-     */
-    @NotNull
-    private Long statusId;
+//    @NotBlank(message = "Home status is required.")
+//    @Size(max = 20, message = "Status code cannot exceed 20 characters.")
+//    private String statusCode;
 }

@@ -60,11 +60,11 @@ public class HomesController {
     }
 
     @PostMapping("/getHomesByLandlordId")
-    public ResponseEntity<List<HomeDetailsDTO>> getMyHomes(Authentication authentication) {
+    public ResponseEntity<List<HomeListDTO>> getMyHomes(Authentication authentication) {
 
         Long landlordId = extractLandlordId(authentication);
 
-        return ResponseEntity.ok(homeService.getHomesByLandlord(landlordId, landlordId));
+        return ResponseEntity.ok(homeService.getHomesByLandlord(landlordId));
     }
 
     @PostMapping("/getRoomsByHomeId")
@@ -73,7 +73,7 @@ public class HomesController {
     }
 
     @GetMapping
-    public ResponseEntity<List<HomeDetailsDTO>> getAllHomes() {
+    public ResponseEntity<List<HomeListDTO>> getAllHomes() {
 
         return ResponseEntity.ok(homeService.getAllHomes());
     }

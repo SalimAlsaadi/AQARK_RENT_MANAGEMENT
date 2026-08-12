@@ -1,7 +1,8 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomCreateRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomUpdateRequestDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -9,9 +10,9 @@ import java.util.List;
 
 public interface RoomsServicesInterface {
 
-    RoomDetailsDTO createRoom(RoomSaveRequestDTO dto, List<MultipartFile> images, Long landlordId) throws IOException;
+    RoomDetailsDTO createRoom(RoomCreateRequestDTO dto, List<MultipartFile> images, Long landlordId) throws IOException;
 
-    RoomDetailsDTO updateRoom(Long roomId, RoomSaveRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete, Long landlord) throws IOException;
+    RoomDetailsDTO updateRoom(Long roomId, RoomUpdateRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete, Long landlord) throws IOException;
 
     RoomDetailsDTO getRoomById(Long roomId);
 
