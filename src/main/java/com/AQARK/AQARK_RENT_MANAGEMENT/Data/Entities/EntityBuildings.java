@@ -89,6 +89,10 @@ public class EntityBuildings {
     @Builder.Default
     private List<EntityFlats> flats = new ArrayList<>();
 
+    @OneToMany(mappedBy = "building", fetch = FetchType.LAZY)
+    @Builder.Default
+    private List<EntityRooms> rooms = new ArrayList<>();
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "status_id", nullable = false)
     private EntityUnitStatus status;

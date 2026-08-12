@@ -1,6 +1,7 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.AssertTrue;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -13,6 +14,7 @@ import java.util.List;
         name = "entity_flats",
         indexes = {
                 @Index(name = "IX_entity_flats_building_id", columnList = "building_id"),
+                @Index(name = "IX_entity_flats_home_id", columnList = "home_id"),
                 @Index(name = "IX_entity_flats_landlord_id", columnList = "landlord_id"),
                 @Index(name = "IX_entity_flats_status_id", columnList = "status_id"),
                 @Index(name = "IX_entity_flats_price", columnList = "price"),
@@ -34,9 +36,13 @@ public class EntityFlats {
     @Column(name = "flat_number", nullable = false, length = 50)
     private String flatNumber;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "building_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "building_id")
     private EntityBuildings building;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "home_id")
+    private EntityHomes home;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "landlord_id", nullable = false)
@@ -51,6 +57,15 @@ public class EntityFlats {
 
     @Column(name = "number_of_bathrooms", nullable = false, length = 50)
     private String numberOfBathrooms;
+
+    @Column(name = "is_furnished", nullable = false)
+    private boolean isFurnished;
+
+    @Column(name = "has_ac", nullable = false)
+    private boolean hasAC;
+
+    @Column(name = "has_wifi", nullable = false)
+    private boolean hasWIFI;
 
     @Column(name = "has_living_room", nullable = false)
     private boolean hasLivingRoom;
@@ -110,5 +125,12 @@ public class EntityFlats {
         if (this.flatNumber != null) {
             this.flatNumber = this.flatNumber.trim();
         }
+    }
+
+    @AssertTrue(message = "Flat must belong to exactly one building or one home.")
+    public boolean isParentValid() {
+        boolean inBuilding = building != null && home == null;
+        boolean inHome = building == null && home != null;
+        return inBuilding || inHome;
     }
 }

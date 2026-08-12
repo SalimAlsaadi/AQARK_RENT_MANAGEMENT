@@ -6,18 +6,26 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.BusinessConflictException;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.FieldValidationException;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.BuildingServicesInterface;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
 import jakarta.persistence.EntityNotFoundException;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import static org.apache.logging.log4j.util.Strings.isBlank;
 
 @Service
 @RequiredArgsConstructor
@@ -39,13 +47,11 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
     @Transactional
     public BuildingDetailsDTO createBuilding(BuildingSaveRequestDTO dto, List<MultipartFile> pictures, Long landlordId) throws IOException {
 
-        Long finalLandlordId = landlordId != null ? landlordId : dto.getLandlordId();
+        Long finalLandlordId = landlordId != null ? landlordId
+                : dto.getLandlordId() != null ? dto.getLandlordId()
+                : null;
 
-        if (finalLandlordId == null) {
-            throw new IllegalArgumentException("Landlord id is required.");
-        }
-
-        validateBuildingSave(dto, finalLandlordId);
+        validateBuildingSave(dto, finalLandlordId, pictures);
 
         EntityBuildings building = toEntity(dto, finalLandlordId);
 
@@ -65,7 +71,10 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public BuildingDetailsDTO getBuildingById(Long id) {
+        validateId(id, "id", "Building id is required.");
+
         EntityBuildings building = buildingRepository.findDetailsById(id);
 
         if (building == null) {
@@ -76,29 +85,71 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<BuildingListDTO> getBuildingsByLandlordId(Long landlordId) {
+        validateId(
+                landlordId,
+                "landlordId",
+                "Landlord id is required."
+        );
 
-        if (landlordId == null || landlordId <= 0) {
-            throw new IllegalArgumentException("Invalid landlord id.");
+        List<EntityBuildings> buildings =
+                buildingRepository.findDetailsByLandlordId(landlordId);
+
+        if (buildings.isEmpty()) {
+            return List.of();
         }
 
-        return buildingRepository.findDetailsByLandlordId(landlordId)
-                .stream()
-                .map(this::toListDTO)
+        Map<Long, BuildingUnitCountsProjection> counts =
+                toCountsMap(
+                        buildingRepository
+                                .getBuildingUnitCountsByLandlordId(landlordId)
+                );
+
+        return buildings.stream()
+                .map(building -> toListDTO(
+                        building,
+                        counts.get(building.getId())
+                ))
                 .toList();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<BuildingListDTO> getAllBuildings() {
-        return buildingRepository.findAllByDeletedFalseOrderByIdDesc()
-                .stream()
-                .map(this::toListDTO)
+        List<EntityBuildings> buildings =
+                buildingRepository.findAllByDeletedFalseOrderByIdDesc();
+
+        if (buildings.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, BuildingUnitCountsProjection> counts =
+                toCountsMap(
+                        buildingRepository.getAllBuildingUnitCounts()
+                );
+
+        return buildings.stream()
+                .map(building -> toListDTO(
+                        building,
+                        counts.get(building.getId())
+                ))
                 .toList();
     }
 
     @Override
     @Transactional
-    public BuildingDetailsDTO updateBuilding(BuildingUpdateRequestDTO dto, List<Long> picturesToDelete, List<MultipartFile> newPictures) throws IOException {
+    public BuildingDetailsDTO updateBuilding(
+            BuildingUpdateRequestDTO dto,
+            List<Long> picturesToDelete,
+            List<MultipartFile> newPictures
+    ) throws IOException {
+
+        if (dto == null) {
+            throw new FieldValidationException("Building request is required.", Map.of("data", "Building request is required."));
+        }
+
+        validateId(dto.getId(), "id", "Building id is required.");
 
         EntityBuildings existing = buildingRepository.findDetailsById(dto.getId());
 
@@ -106,16 +157,20 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
             throw new EntityNotFoundException("Building not found with id: " + dto.getId());
         }
 
-        validateBuildingUpdate(dto, existing.getLandlord().getId());
+        Long landlordId = existing.getLandlord() != null ? existing.getLandlord().getId() : null;
+
+        validateBuildingUpdate(dto, landlordId);
 
         OmanRegionEntity region = getRegion(dto.getRegionId());
         OmanWilayaEntity wilaya = getWilaya(dto.getWilayaId());
         OmanAreaEntity area = getArea(dto.getAreaId());
 
-        EntityUnitStatus status = unitStatusService.getRequiredStatus( StatusDomain.BUILDING, normalizeStatus(dto.getStatusCode()));
+        EntityUnitStatus status = unitStatusService.getRequiredStatus(StatusDomain.BUILDING, normalizeStatus(dto.getStatusCode()));
 
-        existing.setBuildingName(cleanRequired(dto.getBuildingName(), "Building name is required"));
-        existing.setBuildingNumber(cleanRequired(dto.getBuildingNumber(), "Building number is required"));
+        existing.setBuildingName( cleanRequired(dto.getBuildingName(), "Building name is required."));
+
+        existing.setBuildingNumber( cleanRequired(dto.getBuildingNumber(), "Building number is required."));
+
         existing.setRegion(region);
         existing.setWilaya(wilaya);
         existing.setArea(area);
@@ -137,12 +192,17 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
 
         EntityBuildings updated = buildingRepository.save(existing);
 
-        return toDetailsDTO(updated);
+        EntityBuildings loaded = buildingRepository.findDetailsById(updated.getId());
+
+        return toDetailsDTO(loaded);
     }
+
 
     @Override
     @Transactional
     public void softDeleteBuilding(Long buildingId) {
+        validateId(buildingId, "buildingId", "Building id is required.");
+
         EntityBuildings building = buildingRepository.findDetailsById(buildingId);
 
         if (building == null) {
@@ -151,16 +211,17 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
 
         BuildingUnitCountsDTO counts = getUnitCounts(building.getId());
 
-        long totalUnits =
-                counts.getTotalFlats()
-                        + counts.getTotalRooms()
-                        + counts.getTotalShops();
+        long totalUnits = counts.getTotalFlats() + counts.getTotalRooms() + counts.getTotalShops();
 
         if (totalUnits > 0) {
-            throw new IllegalStateException(
-                    "Cannot delete building because it has related units. Deactivate it instead."
+            throw new BusinessConflictException("Cannot delete building because it has related units. Deactivate it instead."
             );
         }
+
+        propertyMediaService.softDeleteAllImages(
+                PropertyType.BUILDING,
+                building.getId()
+        );
 
         building.setDeleted(true);
         building.setActive(false);
@@ -168,6 +229,17 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
 
         buildingRepository.save(building);
     }
+
+    private void validateId(Long id, String fieldName, String message) {
+        if (id == null || id <= 0) {
+            throw new FieldValidationException(message, Map.of(fieldName, message));
+        }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
 
     private EntityBuildings toEntity(BuildingSaveRequestDTO dto, Long landlordId) {
         EntityUser landlord = userRepository.findById(landlordId)
@@ -202,31 +274,143 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
                 .build();
     }
 
-    private void validateBuildingSave(BuildingSaveRequestDTO dto, Long landlordId) {
+    private void validateBuildingSave(BuildingSaveRequestDTO dto, Long landlordId, List<MultipartFile> pictures) {
+
+        Map<String, String> errors = new LinkedHashMap<>();
+
         if (dto == null) {
-            throw new IllegalArgumentException("Building request is required.");
+            throw new FieldValidationException("Building request is required.", Map.of("data", "Building request is required."));
         }
 
-        validateLocation(dto.getRegionId(), dto.getWilayaId(), dto.getAreaId());
+        if (landlordId == null || landlordId <= 0) {
+            errors.put("landlordId", "Authenticated landlord id is not valid or not found.");
+        }
+
+        if (isBlank(dto.getBuildingName())) {
+            errors.put("buildingName", "Building name is required.");
+
+        } else if (dto.getBuildingName().trim().length() > 200) {
+            errors.put("buildingName", "Building name must not exceed 200 characters.");
+        }
+
+        if (isBlank(dto.getBuildingNumber())) {
+            errors.put("buildingNumber", "Building number is required.");
+
+        } else if (dto.getBuildingNumber().trim().length() > 100) {
+            errors.put("buildingNumber", "Building number must not exceed 100 characters.");
+        }
+
+        if (dto.getRegionId() == null || dto.getRegionId() <= 0) {
+            errors.put("regionId", "Region is required.");
+        }
+
+        if (dto.getWilayaId() == null || dto.getWilayaId() <= 0) {
+            errors.put("wilayaId", "Wilaya is required.");
+        }
+
+        if (dto.getAreaId() == null || dto.getAreaId() <= 0) {
+            errors.put("areaId", "Area is required.");
+        }
+
+        if (isBlank(dto.getNumberOfFloors())) {
+            errors.put("numberOfFloors", "Number of floors is required.");
+        }
+
+        if (isBlank(dto.getStatusCode())) {
+            errors.put("statusCode", "Building status is required.");
+        }
+
+        if (dto.getDescription() != null
+                && dto.getDescription().trim().length() > 1000) {
+            errors.put(
+                    "description",
+                    "Description must not exceed 1000 characters."
+            );
+        }
+
+        if(pictures==null || pictures.isEmpty()){
+            errors.put("pictures", "pictures required");
+        }
+
+        validateCoordinates(
+                dto.getLatitude(),
+                dto.getLongitude(),
+                errors
+        );
+
+        if (!errors.isEmpty()) {
+            throw new FieldValidationException("Please complete all required building fields correctly.", errors);
+        }
+
+        String buildingNumber = cleanRequired(
+                dto.getBuildingNumber(),
+                "Building number is required."
+        );
 
         if (buildingRepository.existsByLandlordIdAndBuildingNumberIgnoreCaseAndDeletedFalse(
                 landlordId,
-                cleanRequired(dto.getBuildingNumber(), "Building number is required")
+                buildingNumber
         )) {
-            throw new IllegalStateException("Building number already exists for this landlord.");
+            throw new FieldValidationException(
+                    "Building number already exists.", Map.of("buildingNumber", "Building number already exists for this landlord.")
+            );
         }
-
-        validateCoordinates(dto.getLatitude(), dto.getLongitude());
     }
 
     private void validateBuildingUpdate(BuildingUpdateRequestDTO dto, Long landlordId) {
+
+        Map<String, String> errors = new LinkedHashMap<>();
+
         if (dto == null) {
-            throw new IllegalArgumentException("Building request is required.");
+            throw new FieldValidationException(
+                    "Building request is required.", Map.of("data", "Building request is required."));
         }
 
-        validateLocation(dto.getRegionId(), dto.getWilayaId(), dto.getAreaId());
+        if (dto.getId() == null || dto.getId() <= 0) {
+            errors.put("id", "Building id is required.");
+        }
 
-        validateCoordinates(dto.getLatitude(), dto.getLongitude());
+        if (landlordId == null || landlordId <= 0) {
+            errors.put("landlordId", "Landlord id is not valid.");
+        }
+
+        if (isBlank(dto.getBuildingName())) {
+            errors.put("buildingName", "Building name is required.");
+        }
+
+        if (isBlank(dto.getBuildingNumber())) {
+            errors.put("buildingNumber", "Building number is required.");
+        }
+
+        if (dto.getRegionId() == null || dto.getRegionId() <= 0) {
+            errors.put("regionId", "Region is required.");
+        }
+
+        if (dto.getWilayaId() == null || dto.getWilayaId() <= 0) {
+            errors.put("wilayaId", "Wilaya is required.");
+        }
+
+        if (dto.getAreaId() == null || dto.getAreaId() <= 0) {
+            errors.put("areaId", "Area is required.");
+        }
+
+        if (isBlank(dto.getNumberOfFloors())) {
+            errors.put("numberOfFloors", "Number of floors is required.");
+        }
+
+        if (isBlank(dto.getStatusCode())) {
+            errors.put("statusCode", "Building status is required.");
+        }
+
+        validateCoordinates(
+                dto.getLatitude(),
+                dto.getLongitude(),
+                errors
+        );
+
+        if (!errors.isEmpty()) {
+            throw new FieldValidationException("Please complete all required building fields correctly.", errors);
+        }
     }
 
     private void validateLocation(Long regionId, Long wilayaId, Long areaId) {
@@ -243,33 +427,47 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
         }
     }
 
-    private void validateCoordinates(Double latitude, Double longitude) {
-        if ((latitude == null && longitude != null) || (latitude != null && longitude == null)) {
-            throw new IllegalArgumentException("Latitude and longitude must be provided together.");
+    private void validateCoordinates(Double latitude, Double longitude, Map<String, String> errors) {
+        if (latitude == null) {
+            errors.put("latitude", "Latitude is required.");
+
+        } else if (latitude < -90 || latitude > 90) {
+            errors.put("latitude", "Latitude must be between -90 and 90.");
         }
 
-        if (latitude != null && (latitude < -90 || latitude > 90)) {
-            throw new IllegalArgumentException("Invalid latitude.");
-        }
+        if (longitude == null) {
+            errors.put("longitude", "Longitude is required.");
 
-        if (longitude != null && (longitude < -180 || longitude > 180)) {
-            throw new IllegalArgumentException("Invalid longitude.");
+        } else if (longitude < -180 || longitude > 180) {
+            errors.put("longitude", "Longitude must be between -180 and 180.");
         }
     }
 
     private OmanRegionEntity getRegion(Long id) {
-        return omanRegionRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Region not found with id: " + id));
+        if (id == null || id <= 0) {
+            throw new FieldValidationException(
+                    "Region is required.",
+                    Map.of("regionId", "Region is required.")
+            );
+        }
+
+        return omanRegionRepository.findById(id).orElseThrow(() -> new EntityNotFoundException("Region not found with id: " + id));
     }
 
     private OmanWilayaEntity getWilaya(Long id) {
-        return omanWilayaRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Wilaya not found with id: " + id));
+        if (id == null || id <= 0) {
+            throw new FieldValidationException("Wilaya is required.", Map.of("wilayaId", "Wilaya is required."));
+        }
+
+        return omanWilayaRepository.findById(id).orElseThrow(() -> new EntityNotFoundException("Wilaya not found with id: " + id));
     }
 
     private OmanAreaEntity getArea(Long id) {
-        return omanAreaRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Area not found with id: " + id));
+        if (id == null || id <= 0) {
+            throw new FieldValidationException("Area is required.", Map.of("areaId", "Area is required."));
+        }
+
+        return omanAreaRepository.findById(id).orElseThrow(() -> new EntityNotFoundException("Area not found with id: " + id));
     }
 
     private String normalizeStatus(String statusCode) {
@@ -293,15 +491,16 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
                 .description(building.getDescription())
                 .landlordId(building.getLandlord() != null ? building.getLandlord().getId() : null)
                 .landlordName(getLandlordName(building.getLandlord()))
-                .landlordMobileNumber(
-                        building.getLandlord() != null ? building.getLandlord().getPhoneNumber() : null
-                )
+                .landlordMobileNumber(building.getLandlord() != null ? building.getLandlord().getPhoneNumber() : null)
                 .pictureUrls(getPictureUrls(building.getId()))
                 .build();
     }
 
-    private BuildingListDTO toListDTO(EntityBuildings building) {
-        BuildingUnitCountsDTO counts = getUnitCounts(building.getId());
+    private BuildingListDTO toListDTO(
+            EntityBuildings building,
+            BuildingUnitCountsProjection projection
+    ) {
+        BuildingUnitCountsDTO counts = toCountsDTO(projection);
 
         long availableUnits =
                 counts.getFlatsAvailable()
@@ -320,18 +519,22 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
 
         List<String> images = getPictureUrls(building.getId());
 
+        EntityUnitStatus status = building.getStatus();
+
         return BuildingListDTO.builder()
                 .id(building.getId())
                 .buildingName(building.getBuildingName())
                 .buildingNumber(building.getBuildingNumber())
-                .region(building.getRegion() != null ? building.getRegion().getNameEn() : null)
-                .wilaya(building.getWilaya() != null ? building.getWilaya().getNameEn() : null)
-                .area(building.getArea() != null ? building.getArea().getNameEn() : null)
-                .statusCode(building.getStatus().getCode())
-                .statusNameEn(building.getStatus().getNameEn())
-                .statusNameAr(building.getStatus().getNameAr())
-                .statusColorCode(building.getStatus().getColorCode())
-                .statusIcon(building.getStatus().getIcon())
+                .region(getRegionName(building))
+                .wilaya(getWilayaName(building))
+                .area(getAreaName(building))
+                .statusCode(status != null ? status.getCode() : null)
+                .statusNameEn(status != null ? status.getNameEn() : null)
+                .statusNameAr(status != null ? status.getNameAr() : null)
+                .statusColorCode(
+                        status != null ? status.getColorCode() : null
+                )
+                .statusIcon(status != null ? status.getIcon() : null)
                 .numberOfFloors(building.getNumberOfFloors())
                 .totalFlats(counts.getTotalFlats())
                 .totalRooms(counts.getTotalRooms())
@@ -339,8 +542,43 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
                 .availableUnits(availableUnits)
                 .rentedUnits(rentedUnits)
                 .maintenanceUnits(maintenanceUnits)
-                .mainImageUrl(images.isEmpty() ? null : images.get(0))
+                .mainImageUrl(images.isEmpty() ? null : images)
                 .build();
+    }
+
+    private Map<Long, BuildingUnitCountsProjection> toCountsMap(
+            List<BuildingUnitCountsProjection> projections
+    ) {
+        if (projections == null || projections.isEmpty()) {
+            return Map.of();
+        }
+
+        return projections.stream()
+                .filter(projection -> projection.getBuildingId() != null)
+                .collect(Collectors.toMap(
+                        BuildingUnitCountsProjection::getBuildingId,
+                        Function.identity(),
+                        (first, ignored) -> first,
+                        LinkedHashMap::new
+                ));
+    }
+
+    private String getRegionName(EntityBuildings building) {
+        return building.getRegion() != null
+                ? building.getRegion().getNameEn()
+                : null;
+    }
+
+    private String getWilayaName(EntityBuildings building) {
+        return building.getWilaya() != null
+                ? building.getWilaya().getNameEn()
+                : null;
+    }
+
+    private String getAreaName(EntityBuildings building) {
+        return building.getArea() != null
+                ? building.getArea().getNameEn()
+                : null;
     }
 
     private BuildingStatusDTO toStatusDTO(EntityUnitStatus status) {
@@ -384,21 +622,38 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
     }
 
     private BuildingUnitCountsDTO getUnitCounts(Long buildingId) {
-        BuildingUnitCountsProjection projection =
-                buildingRepository.getBuildingUnitCounts(buildingId);
+        validateId(buildingId, "buildingId", "Building id is required.");
+
+        return toCountsDTO(buildingRepository.getBuildingUnitCounts(buildingId));
+    }
+
+    private BuildingUnitCountsDTO toCountsDTO( BuildingUnitCountsProjection projection) {
 
         if (projection == null) {
             return emptyCounts();
+        }
+
+        long directRooms = nullToZero(projection.getDirectRooms());
+
+        long roomsInFlat = nullToZero(projection.getRoomsInFlat());
+
+        long totalRooms = nullToZero(projection.getTotalRooms());
+
+        if (totalRooms != directRooms + roomsInFlat) {
+            totalRooms = directRooms + roomsInFlat;
         }
 
         return BuildingUnitCountsDTO.builder()
                 .totalFlats(nullToZero(projection.getTotalFlats()))
                 .flatsAvailable(nullToZero(projection.getFlatsAvailable()))
                 .flatsRented(nullToZero(projection.getFlatsRented()))
+                .flatsRentedAsRooms(nullToZero(projection.getFlatsRentedAsRooms()))
                 .flatsReserved(nullToZero(projection.getFlatsReserved()))
                 .flatsUnderMaintenance(nullToZero(projection.getFlatsUnderMaintenance()))
                 .flatsBlocked(nullToZero(projection.getFlatsBlocked()))
-                .totalRooms(nullToZero(projection.getTotalRooms()))
+                .totalRooms(totalRooms)
+                .directRooms(directRooms)
+                .roomsInFlat(roomsInFlat)
                 .roomsAvailable(nullToZero(projection.getRoomsAvailable()))
                 .roomsRented(nullToZero(projection.getRoomsRented()))
                 .roomsReserved(nullToZero(projection.getRoomsReserved()))
@@ -418,10 +673,13 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
                 .totalFlats(0)
                 .flatsAvailable(0)
                 .flatsRented(0)
+                .flatsRentedAsRooms(0)
                 .flatsReserved(0)
                 .flatsUnderMaintenance(0)
                 .flatsBlocked(0)
                 .totalRooms(0)
+                .directRooms(0L)
+                .roomsInFlat(0L)
                 .roomsAvailable(0)
                 .roomsRented(0)
                 .roomsReserved(0)
@@ -461,11 +719,17 @@ public class BuildingServicesImpl implements BuildingServicesInterface {
         return fullName.isEmpty() ? null : fullName;
     }
 
-    private String cleanRequired(String value, String errorMessage) {
+    private String cleanRequired(
+            String value,
+            String errorMessage
+    ) {
         String cleaned = clean(value);
 
         if (cleaned == null) {
-            throw new IllegalArgumentException(errorMessage);
+            throw new FieldValidationException(
+                    errorMessage,
+                    Map.of("value", errorMessage)
+            );
         }
 
         return cleaned;

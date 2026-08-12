@@ -1,8 +1,12 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.ApiResponse;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.PropertyCommonServiceInterface;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -39,7 +43,10 @@ public class PropertyCommonController {
 
         Object result = propertyCommonServiceInterface.create(propertyType, data, pictures == null ? Collections.emptyList() : pictures, landlordId);
 
-        return ResponseEntity.ok(result);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(
+                buildCreateSuccessMessage(PropertyType.valueOf(propertyType.trim().toUpperCase())),
+                result
+        ));
     }
 
 
@@ -96,5 +103,16 @@ public class PropertyCommonController {
                                 ? "null"
                                 : authentication.getClass().getName())
         );
+    }
+
+
+    private String buildCreateSuccessMessage(PropertyType type) {
+        return switch (type) {
+            case BUILDING -> "New building has been added successfully.";
+            case FLAT -> "New flat has been added successfully.";
+            case HOME -> "New home has been added successfully.";
+            case ROOM -> "New room has been added successfully.";
+            case SHOP -> "New shop has been added successfully.";
+        };
     }
 }

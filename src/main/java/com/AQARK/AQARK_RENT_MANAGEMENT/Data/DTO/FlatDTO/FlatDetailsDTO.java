@@ -18,6 +18,9 @@ public class FlatDetailsDTO {
     private Integer numberOfRooms;
     private String numberOfBathrooms;
     private Boolean hasLivingRoom;
+    private Boolean isFurnished;
+    private Boolean hasAC;
+    private Boolean hasWIFI;
 
     private FlatStatusDTO status;
 
@@ -49,9 +52,20 @@ public class FlatDetailsDTO {
     private String landlordName;
     private String landlordPhoneNumber;
 
+    /*
+     * Building parent
+     */
     private Long buildingId;
     private String buildingName;
     private String buildingNumber;
+
+    /*
+     * Home parent
+     */
+    private Long homeId;
+    private String homeLabel;
+    private String homeNumber;
+    private String homeType;
 
     private Boolean hasParking;
     private Boolean hasGym;

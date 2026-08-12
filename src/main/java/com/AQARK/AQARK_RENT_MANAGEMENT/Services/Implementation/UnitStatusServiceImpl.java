@@ -2,8 +2,10 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Services.Implementation;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO.UnitStatusDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO.UnitStatusSaveRequestDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.StatusDTO.UnitStatusUpdateRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.EntityUnitStatus;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusLevel;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.UnitStatusRepository;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
 import jakarta.transaction.Transactional;
@@ -11,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +44,7 @@ public class UnitStatusServiceImpl implements UnitStatusServiceInterface {
                 .descriptionAr(clean(dto.getDescriptionAr()))
                 .colorCode(clean(dto.getColorCode()))
                 .icon(clean(dto.getIcon()))
+                .statusLevel(requireStatusLevel(dto.getStatusLevel()))
                 .active(dto.getActive() == null || dto.getActive())
                 .build();
 
@@ -51,8 +55,8 @@ public class UnitStatusServiceImpl implements UnitStatusServiceInterface {
 
     @Override
     @Transactional
-    public UnitStatusDTO updateStatus(Long id, UnitStatusSaveRequestDTO dto) {
-        validateSaveRequest(dto);
+    public UnitStatusDTO updateStatus(Long id, UnitStatusUpdateRequestDTO dto) {
+
 
         EntityUnitStatus status = unitStatusRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Status not found with id: " + id));
@@ -81,6 +85,7 @@ public class UnitStatusServiceImpl implements UnitStatusServiceInterface {
         status.setDescriptionAr(clean(dto.getDescriptionAr()));
         status.setColorCode(clean(dto.getColorCode()));
         status.setIcon(clean(dto.getIcon()));
+        status.setStatusLevel(requireStatusLevel(dto.getStatusLevel()));
 
         if (dto.getActive() != null) {
             status.setActive(dto.getActive());
@@ -118,9 +123,32 @@ public class UnitStatusServiceImpl implements UnitStatusServiceInterface {
     }
 
     @Override
+    public List<UnitStatusDTO> getActiveStatusesByDomainAndLevel(
+            StatusDomain domain,
+            StatusLevel level
+    ) {
+        String normalizedDomain = normalizeDomain(domain);
+        StatusLevel requiredLevel = Objects.requireNonNull(level, "Status level is required.");
+
+        return unitStatusRepository
+                .findByStatusDomainIgnoreCaseAndStatusLevelAndActiveTrueOrderByNameEnAsc(
+                        normalizedDomain,
+                        requiredLevel
+                )
+                .stream()
+                .map(this::toDTO)
+                .toList();
+    }
+
+    @Override
+    public List<UnitStatusDTO> getSetupStatusesByDomain(StatusDomain domain) {
+        return getActiveStatusesByDomainAndLevel(domain, StatusLevel.S);
+    }
+
+    @Override
     public List<UnitStatusDTO> getAllActiveStatuses() {
         return unitStatusRepository
-                .findByActiveTrueOrderByStatusDomainAscNameEnAsc()
+                .findByActiveTrueOrderByStatusDomainAscStatusLevelAscNameEnAsc()
                 .stream()
                 .map(this::toDTO)
                 .toList();
@@ -129,7 +157,7 @@ public class UnitStatusServiceImpl implements UnitStatusServiceInterface {
     @Override
     public List<UnitStatusDTO> getAllStatuses() {
         return unitStatusRepository
-                .findAllByOrderByStatusDomainAscNameEnAsc()
+                .findAllByOrderByStatusDomainAscStatusLevelAscNameEnAsc()
                 .stream()
                 .map(this::toDTO)
                 .toList();
@@ -181,13 +209,48 @@ public class UnitStatusServiceImpl implements UnitStatusServiceInterface {
     }
 
     @Override
+    public EntityUnitStatus getRequiredStatus(
+            StatusDomain domain,
+            String code,
+            StatusLevel level
+    ) {
+        String normalizedDomain = normalizeDomain(domain);
+        String normalizedCode = normalizeCode(code);
+        StatusLevel requiredLevel = Objects.requireNonNull(level, "Status level is required.");
+
+        return unitStatusRepository
+                .findByStatusDomainIgnoreCaseAndCodeIgnoreCaseAndStatusLevelAndActiveTrue(
+                        normalizedDomain,
+                        normalizedCode,
+                        requiredLevel
+                )
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Invalid, inactive, or disallowed status: "
+                                + normalizedDomain + "/" + normalizedCode
+                                + " for level " + requiredLevel
+                ));
+    }
+
+    @Override
+    public EntityUnitStatus getRequiredSetupStatus(StatusDomain domain, String code) {
+        return getRequiredStatus(domain, code, StatusLevel.S);
+    }
+
+    @Override
     public EntityUnitStatus getDefaultBuildingStatus() {
         return getRequiredStatus(StatusDomain.BUILDING, "ACTIVE");
     }
 
+
     @Override
-    public EntityUnitStatus getDefaultUnitStatus() {
-        return getRequiredStatus(StatusDomain.UNIT, "AVAILABLE");
+    public EntityUnitStatus getDefaultStatus(StatusDomain domain) {
+        return switch (domain) {
+            case BUILDING -> getRequiredSetupStatus(StatusDomain.BUILDING, "ACTIVE");
+            case HOME, FLAT, ROOM, SHOP -> getRequiredSetupStatus(domain, "AVAILABLE");
+            case CONTRACT -> getRequiredSetupStatus(StatusDomain.CONTRACT, "DRAFT");
+            case MAINTENANCE -> getRequiredSetupStatus(StatusDomain.MAINTENANCE, "OPEN");
+            case PAYMENT -> getRequiredSetupStatus(StatusDomain.PAYMENT, "PENDING");
+        };
     }
 
     @Override
@@ -235,6 +298,14 @@ public class UnitStatusServiceImpl implements UnitStatusServiceInterface {
         if (dto.getNameEn() == null || dto.getNameEn().trim().isEmpty()) {
             throw new IllegalArgumentException("English status name is required.");
         }
+
+        if (dto.getStatusLevel() == null) {
+            throw new IllegalArgumentException("Status level is required.");
+        }
+    }
+
+    private StatusLevel requireStatusLevel(StatusLevel level) {
+        return Objects.requireNonNull(level, "Status level is required.");
     }
 
     private String normalizeDomain(StatusDomain domain) {
@@ -300,6 +371,7 @@ public class UnitStatusServiceImpl implements UnitStatusServiceInterface {
                 .descriptionAr(status.getDescriptionAr())
                 .colorCode(status.getColorCode())
                 .icon(status.getIcon())
+                .statusLevel(status.getStatusLevel())
                 .active(status.isActive())
                 .build();
     }

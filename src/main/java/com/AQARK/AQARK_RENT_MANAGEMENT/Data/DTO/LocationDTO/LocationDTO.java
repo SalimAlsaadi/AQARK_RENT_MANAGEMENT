@@ -20,4 +20,7 @@ public class LocationDTO {
     private Long areaId;
     private String areaNameEn;
     private String areaNameAr;
+
+    private Double latitude;
+    private Double longitude;
 }

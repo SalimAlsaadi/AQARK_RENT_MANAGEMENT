@@ -2,9 +2,10 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.FlatIdDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomIdDTO;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomSaveRequestDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomUpdateRequestDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +35,7 @@ public class RoomsController {
     ) throws IOException {
 
         Long landlordId = extractLandlordId(authentication);
-        RoomSaveRequestDTO dto = objectMapper.readValue(roomJson, RoomSaveRequestDTO.class);
+        RoomUpdateRequestDTO dto = objectMapper.readValue(roomJson, RoomUpdateRequestDTO.class);
 
         List<Long> imagesToDelete = parseIds(imagesToDeleteJson);
 
@@ -51,21 +52,19 @@ public class RoomsController {
         return roomService.getAllRooms();
     }
 
-    @PostMapping("getRoomsByBuildingId")
+    @PostMapping("/getRoomsByBuildingId")
     public List<RoomDetailsDTO> getRoomsByBuildingId(@RequestBody BuildingIdDTO building) {
         return roomService.getRoomsByBuildingId(building.getBuildingId());
     }
 
-    @PostMapping("getRoomsByFlatId")
+    @PostMapping("/getRoomsByFlatId")
     public List<RoomDetailsDTO> getRoomsByFlatId(@RequestBody FlatIdDTO flat) {
         return roomService.getRoomsByFlatId(flat.getFlatId());
     }
 
-    @GetMapping("/home/{homeId}")
-    public List<RoomDetailsDTO> getRoomsByHomeId(
-            @PathVariable Long homeId
-    ) {
-        return roomService.getRoomsByHomeId(homeId);
+    @PostMapping("/getRoomsByHomeId")
+    public List<RoomDetailsDTO> getRoomsByHomeId(@RequestBody HomeIdDTO home) {
+        return roomService.getRoomsByHomeId(home.getHomeId());
     }
 
     @DeleteMapping("/deleteRoomById")
