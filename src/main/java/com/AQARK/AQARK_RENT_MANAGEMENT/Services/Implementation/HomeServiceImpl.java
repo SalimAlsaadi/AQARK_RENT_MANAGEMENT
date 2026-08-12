@@ -10,51 +10,92 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.HomeRentalStructure;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusLevel;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.UnitStatusCountsProjection;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.BusinessConflictException;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.FieldValidationException;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.HomeServiceInterface;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
 import jakarta.persistence.EntityNotFoundException;
-import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.util.*;
-
-import static org.apache.logging.log4j.util.Strings.isBlank;
 
 @Service
 @RequiredArgsConstructor
 public class HomeServiceImpl implements HomeServiceInterface {
 
-    private static final String HOME_STATUS_DOMAIN = "HOME";
-    private static final String ROOM_STATUS_CODE_RENTED = "RENTED";
 
-    private final OmanLocationServiceImpl omanLocationService;
+    private static final String AVAILABLE = "AVAILABLE";
+    private static final String RENTED = "RENTED";
+    private static final String RESERVED = "RESERVED";
+    private static final String INACTIVE = "INACTIVE";
+    private static final String DRAFT = "DRAFT";
+    private static final String BLOCKED = "BLOCKED";
+    private static final String UNDER_MAINTENANCE = "UNDER_MAINTENANCE";
+    private static final String AVAILABLE_AS_MULTI_UNITS = "AVAILABLE_AS_MULTI_UNITS";
+    private static final String PARTIALLY_RENTED_AS_MULTI_UNITS = "PARTIALLY_RENTED_AS_MULTI_UNITS";
+    private static final String FULLY_RENTED_AS_MULTI_UNITS = "FULLY_RENTED_AS_MULTI_UNITS";
+
+
     /*
-     * These statuses are calculated automatically based on rooms.
-     * Frontend must not force them manually.
+     * Keep legacy automatically-generated statuses because old data may
+     * still contain them.
      */
     private static final Set<String> AUTO_MANAGED_HOME_STATUSES = Set.of(
-            "AVAILABLE_AS_MULTI_UNITS",
-            "PARTIALLY_RENTED_AS_MULTI_UNITS",
-            "FULLY_RENTED_AS_MULTI_UNITS",
+            AVAILABLE_AS_MULTI_UNITS,
+            PARTIALLY_RENTED_AS_MULTI_UNITS,
+            FULLY_RENTED_AS_MULTI_UNITS,
+
             "AVAILABLE_AS_ROOMS",
             "PARTIALLY_RENTED_AS_ROOMS",
             "FULLY_RENTED_AS_ROOMS",
+
             "AVAILABLE_AS_FLATS",
             "PARTIALLY_RENTED_AS_FLATS",
             "FULLY_RENTED_AS_FLATS",
+
             "AVAILABLE_AS_FLAT_AND_ROOMS"
     );
+
+
+    /*
+     * These statuses explicitly override child inventory calculations.
+     *
+     * Example:
+     * Home manually BLOCKED -> Rooms must not make Home AVAILABLE.
+     */
+    private static final Set<String> PROTECTED_HOME_STATUSES = Set.of(
+            RENTED,
+            RESERVED,
+            INACTIVE,
+            DRAFT,
+            BLOCKED,
+            UNDER_MAINTENANCE
+    );
+
+
+    /*
+     * A Flat with one of these statuses is no longer one whole rentable
+     * Flat. Its Rooms become the rentable inventory instead.
+     */
+    private static final Set<String> FLAT_DIVIDED_INTO_ROOMS = Set.of(
+            "AVAILABLE_AS_ROOMS",
+            "PARTIALLY_RENTED_AS_ROOMS",
+            "FULLY_RENTED_AS_ROOMS"
+    );
+
+
+    // =========================================================
+    // DEPENDENCIES
+    // =========================================================
 
     private final HomeRepository homeRepository;
     private final UserRepository userRepository;
@@ -64,10 +105,16 @@ public class HomeServiceImpl implements HomeServiceInterface {
     private final OmanRegionRepository regionRepository;
     private final OmanWilayaRepository wilayaRepository;
     private final OmanAreaRepository areaRepository;
+
     private final UnitStatusRepository unitStatusRepository;
+    private final UnitStatusServiceInterface unitStatusService;
 
     private final PropertyMediaService propertyMediaService;
-    private final UnitStatusServiceInterface unitStatusService;
+
+
+    // =========================================================
+    // CREATE
+    // =========================================================
 
     @Override
     @Transactional
@@ -77,12 +124,14 @@ public class HomeServiceImpl implements HomeServiceInterface {
             Long authenticatedLandlordId
     ) throws IOException {
 
-        validateCreateRequest(dto, authenticatedLandlordId);
+        validateAuthenticatedLandlord(authenticatedLandlordId);
 
         EntityUser landlord = getLandlord(authenticatedLandlordId);
-        LocationData locationData = validateAndGetLocation(
-                dto.getRegionId(), dto.getWilayaId(), dto.getAreaId()
-        );
+
+        validateHomeNumberUnique(authenticatedLandlordId, dto.getHomeNumber(), null);
+
+        LocationData location = getValidLocation(dto.getRegionId(), dto.getWilayaId(), dto.getAreaId());
+
 
         EntityHomes home = EntityHomes.builder()
                 .homeType(dto.getHomeType())
@@ -94,95 +143,139 @@ public class HomeServiceImpl implements HomeServiceInterface {
                 .furnished(Boolean.TRUE.equals(dto.getFurnished()))
                 .numberOfFloor(dto.getNumberOfFloor())
                 .description(clean(dto.getDescription()))
-                .region(locationData.region())
-                .wilaya(locationData.wilaya())
-                .area(locationData.area())
+                .region(location.region())
+                .wilaya(location.wilaya())
+                .area(location.area())
                 .latitude(dto.getLatitude())
                 .longitude(dto.getLongitude())
-                .tenantType(cleanRequired(dto.getTenantType(), "Tenant type is required."))
-                .rentType(cleanRequired(dto.getRentTimeType(), "Rent time type is required."))
+                .tenantType(clean(dto.getTenantType()))
+                .rentType(clean(dto.getRentTimeType()))
                 .price(dto.getPrice())
-                .status(resolveInitialHomeStatus(dto.getRentalStructure()))
+                .status(initialHomeStatus(dto.getRentalStructure()))
                 .landlord(landlord)
                 .active(true)
                 .deleted(false)
                 .build();
 
-        EntityHomes savedHome = homeRepository.saveAndFlush(home);
 
-        if (pictures != null && !pictures.isEmpty()) {
-            propertyMediaService.saveImages(pictures, PropertyType.HOME, savedHome.getId());
-        }
+        EntityHomes saved = homeRepository.saveAndFlush(home);
 
-        EntityHomes loadedHome = homeRepository.findDetailsById(savedHome.getId());
-        return toDetailsDTO(loadedHome == null ? savedHome : loadedHome);
+
+        saveImages(saved.getId(), pictures);
+
+
+        return toDetailsDTO(saved);
     }
+
+
+    // =========================================================
+    // UPDATE
+    // =========================================================
 
     @Override
     @Transactional
-    public HomeDetailsDTO updateHome(HomeUpdateRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete, Long authenticatedLandlordId) throws IOException {
+    public HomeDetailsDTO updateHome(
+            HomeUpdateRequestDTO dto,
+            List<MultipartFile> newImages,
+            List<Long> imageIdsToDelete,
+            Long authenticatedLandlordId
+    ) throws IOException {
 
         if (dto == null) {
-            throw new FieldValidationException(
-                    "Home request body is required.",
-                    Map.of("data", "Home request body is required.")
-            );
+            throw fieldError("data", "Home request body is required.");
         }
+
+
+
 
         EntityHomes home = getOwnedHome(dto.getId(), authenticatedLandlordId);
 
+
         if (dto.getNumberOfRooms() != null) {
-            validateHomeRoomCountReduction(home, dto.getNumberOfRooms());
+            validateRoomCountReduction(home, dto.getNumberOfRooms());
         }
 
-        updateHomeFields(home, dto);
+        if (dto.getHomeNumber() != null) {
+            validateHomeNumberUnique(authenticatedLandlordId, dto.getHomeNumber(), home.getId());
+        }
 
-        // Keep the landlord-selected structure. Child creation may automatically
-        // upgrade WHOLE_HOME to MULTI_UNITS_HOME, but no operation silently downgrades it.
 
-        EntityHomes savedHome = homeRepository.saveAndFlush(home);
+        applyUpdateFields(home, dto);
+
+
+        EntityHomes saved = homeRepository.saveAndFlush(home);
+
 
         propertyMediaService.updateImages(
                 PropertyType.HOME,
-                savedHome.getId(),
+                saved.getId(),
                 imageIdsToDelete,
                 newImages
         );
 
-        return toDetailsDTO(savedHome);
+
+        refreshHomeState(saved.getId());
+
+
+        return toDetailsDTO(getOwnedHome(saved.getId(), authenticatedLandlordId));
     }
+
+
+    // =========================================================
+    // CHANGE STATUS
+    // =========================================================
 
     @Override
     @Transactional
-    public HomeDetailsDTO changeHomeStatus(HomeChangeStatusRequestDTO dto, Long authenticatedLandlordId) {
+    public HomeDetailsDTO changeHomeStatus(
+            HomeChangeStatusRequestDTO dto,
+            Long authenticatedLandlordId
+    ) {
 
-        EntityHomes home = getOwnedHome(dto.getHomeId(), authenticatedLandlordId);
-
-        EntityUnitStatus requestedStatus = getHomeStatusById(dto.getStatusId());
-        validateSetupStatus(requestedStatus);
-
-        String requestedCode = requestedStatus.getCode();
-
-        if (AUTO_MANAGED_HOME_STATUSES.contains(requestedCode)) {
-            throw new IllegalStateException(
-                    "This status is managed automatically based on home rooms."
+        if (dto == null) {
+            throw fieldError(
+                    "data",
+                    "Home status request is required."
             );
         }
 
-        validateManualStatusTransition(home, requestedCode);
+        EntityHomes home =
+                getOwnedHome(
+                        dto.getHomeId(),
+                        authenticatedLandlordId
+                );
+
+
+        EntityUnitStatus requestedStatus =
+                getManualHomeStatus(
+                        dto.getStatusId()
+                );
+
+
+        validateManualStatusTransition(
+                home,
+                requestedStatus.getCode()
+        );
+
 
         home.setStatus(requestedStatus);
 
-        if ("INACTIVE".equalsIgnoreCase(requestedCode)) {
-            home.setActive(false);
-        } else {
-            home.setActive(true);
-        }
+        home.setActive(
+                !INACTIVE.equalsIgnoreCase(
+                        requestedStatus.getCode()
+                )
+        );
 
-        EntityHomes savedHome = homeRepository.save(home);
 
-        return toDetailsDTO(savedHome);
+        return toDetailsDTO(
+                homeRepository.save(home)
+        );
     }
+
+
+    // =========================================================
+    // GET
+    // =========================================================
 
     @Override
     @Transactional(readOnly = true)
@@ -190,21 +283,15 @@ public class HomeServiceImpl implements HomeServiceInterface {
             Long homeId,
             Long authenticatedLandlordId
     ) {
-        validateId(homeId, "homeId", "Home id is required.");
-        validateId(authenticatedLandlordId, "landlordId", "Authenticated landlord id is required.");
 
-        EntityHomes home = homeRepository.findDetailsById(homeId);
-
-        if (home == null) {
-            throw new EntityNotFoundException(
-                    "Home not found with id: " + homeId
-            );
-        }
-
-        validateOwnership(home, authenticatedLandlordId);
-
-        return toDetailsDTO(home);
+        return toDetailsDTO(
+                getOwnedHome(
+                        homeId,
+                        authenticatedLandlordId
+                )
+        );
     }
+
 
     @Override
     @Transactional(readOnly = true)
@@ -216,21 +303,19 @@ public class HomeServiceImpl implements HomeServiceInterface {
             return List.of();
         }
 
-        Map<Long, HomeUnitCountsProjection> counts =
-                toCountsMap(homeRepository.getAllHomeUnitCounts());
+        Map<Long, HomeUnitCountsProjection> counts = toCountsMap(homeRepository.getAllHomeUnitCounts());
 
         return homes.stream()
-                .map(home -> toListDTO(
-                        home,
-                        counts.get(home.getId())
-                ))
+                .map(home -> toListDTO(home, counts.get(home.getId())))
                 .toList();
     }
+
 
     @Override
     @Transactional(readOnly = true)
     public List<HomeListDTO> getHomesByLandlord(Long landlordId) {
-        validateId(landlordId, "landlordId", "Landlord id is required.");
+
+        validateId(landlordId, "landlordId");
 
         List<EntityHomes> homes = homeRepository.findDetailsByLandlordId(landlordId);
 
@@ -238,7 +323,9 @@ public class HomeServiceImpl implements HomeServiceInterface {
             return List.of();
         }
 
+
         Map<Long, HomeUnitCountsProjection> counts = toCountsMap(homeRepository.getHomeUnitCountsByLandlordId(landlordId));
+
 
         return homes
                 .stream()
@@ -247,450 +334,970 @@ public class HomeServiceImpl implements HomeServiceInterface {
     }
 
 
+    // =========================================================
+    // DELETE
+    // =========================================================
+
     @Override
     @Transactional
     public void deleteHome(Long homeId, Long authenticatedLandlordId) {
+
         EntityHomes home = getOwnedHome(homeId, authenticatedLandlordId);
 
         HomeUnitCountsDTO counts = getUnitCounts(homeId);
 
-        long totalChildUnits =
-                counts.getTotalFlats()
-                        + counts.getTotalRooms();
+        if (counts.getTotalFlats() + counts.getTotalRooms() > 0) {
 
-
-        if (totalChildUnits > 0) {
-            throw new BusinessConflictException("Cannot delete home because it has related flats, rooms, or shops. Deactivate it instead.");
+            throw new BusinessConflictException(
+                    "Cannot delete home because it still has active Flats or Rooms. "
+                            + "Delete or move those units first."
+            );
         }
 
-        propertyMediaService.softDeleteAllImages(
-                PropertyType.HOME,
-                homeId
-        );
+        propertyMediaService.softDeleteAllImages(PropertyType.HOME, homeId);
 
         home.setDeleted(true);
         home.setActive(false);
         home.setDeletedAt(LocalDateTime.now());
+        home.setStatus(requiredHomeStatus(INACTIVE));
 
-        /*
-         * Set INACTIVE only when this status exists
-         * in the HOME domain.
-         */
-        home.setStatus(getHomeStatusByCode("INACTIVE"));
 
         homeRepository.save(home);
     }
 
 
-    private void validateCreateRequest(HomeCreateRequestDTO dto, Long authenticatedLandlordId) {
-        Map<String, String> errors = new LinkedHashMap<>();
+    // =========================================================
+    // HOME STATE CALCULATION
+    // =========================================================
 
-        if (dto == null) {
-            throw new FieldValidationException("Home request body is required.", Map.of("data", "Home request body is required."));
+    /**
+     * Central Home calculator.
+     *
+     * Called after:
+     *
+     * - direct Room create/update/delete/move
+     * - Flat create/update/delete/move
+     * - child Room status change
+     * - child Flat status change
+     * - Home room-capacity change
+     *
+     * It is intentionally idempotent.
+     */
+    @Transactional
+    public void refreshHomeState(Long homeId) {
+
+        if (homeId == null || homeId <= 0) {
+            return;
         }
 
-        if (authenticatedLandlordId == null || authenticatedLandlordId <= 0) {
-            errors.put(
-                    "landlordId",
-                    "Authenticated landlord id is not valid or not found."
-            );
+
+        EntityHomes home = homeRepository.findByIdForUpdate(homeId).orElse(null);
+
+
+        if (home == null || home.isDeleted()) {
+            return;
         }
 
-        if (dto.getRentalStructure() == null) {
-            errors.put("rentalStructure", "Home rental structure is required.");
-        }
 
-        if (isBlank(dto.getHomeType().toString())) {
-            errors.put(
-                    "homeType",
-                    "Home type is required."
-            );
-        }
-
-        if (isBlank(dto.getHomeNumber())) {
-            errors.put(
-                    "homeNumber",
-                    "Home number is required."
-            );
-        }
-
-        if (dto.getNumberOfRooms() == null || dto.getNumberOfRooms() <= 0) {
-            errors.put(
-                    "numberOfRooms",
-                    "Number of rooms must be at least 1."
-            );
-        }
-
-        if (dto.getNumberOfRooms() != null && dto.getNumberOfRooms() > 100) {
-            errors.put(
-                    "numberOfRooms",
-                    "Number of rooms cannot exceed 100."
-            );
-        }
-
-        if (dto.getNumberOfBathrooms() == null || dto.getNumberOfBathrooms() <= 0) {
-            errors.put(
-                    "numberOfBathrooms",
-                    "Number of bathrooms must be at least 1."
-            );
-        }
-
-        if (dto.getNumberOfBathrooms() != null && dto.getNumberOfBathrooms() > 100) {
-            errors.put(
-                    "numberOfBathrooms",
-                    "Number of bathrooms cannot exceed 100."
-            );
-        }
-
-        if (dto.getNumberOfFloor() == null || dto.getNumberOfFloor() < 0) {
-            errors.put(
-                    "numberOfFloor",
-                    "Number of floors is required and cannot be negative."
-            );
-        }
-
-        if (isBlank(dto.getDescription())) {
-            errors.put(
-                    "description",
-                    "Description is required."
-            );
-        }
-
-        if (dto.getRegionId() == null || dto.getRegionId() <= 0) {
-            errors.put(
-                    "regionId",
-                    "Region is required."
-            );
-        }
-
-        if (dto.getWilayaId() == null || dto.getWilayaId() <= 0) {
-            errors.put(
-                    "wilayaId",
-                    "Wilaya is required."
-            );
-        }
-
-        if (dto.getAreaId() == null || dto.getAreaId() <= 0) {
-            errors.put(
-                    "areaId",
-                    "Area is required."
-            );
-        }
-
-        if (dto.getLatitude() == null) {
-            errors.put(
-                    "latitude",
-                    "Latitude is required."
-            );
-        } else if (dto.getLatitude().compareTo((double) -90) < 0
-                || dto.getLatitude().compareTo(90.0) > 0) {
-            errors.put(
-                    "latitude",
-                    "Latitude must be between -90 and 90."
-            );
-        }
-
-        if (dto.getLongitude() == null) {
-            errors.put(
-                    "longitude",
-                    "Longitude is required."
-            );
-        } else if (dto.getLongitude().compareTo((double) -180) < 0
-                || dto.getLongitude().compareTo(180.0) > 0) {
-            errors.put(
-                    "longitude",
-                    "Longitude must be between -180 and 180."
-            );
-        }
+        HomeInventory inventory = calculateInventory(home);
 
 
         /*
-         * Whole-Home rental fields.
+         * Once real child units exist, Home automatically becomes
+         * MULTI_UNITS_HOME.
          *
-         * For ROOMS, FLATS and FLATS_AND_ROOMS,
-         * price and rental details are stored on child units.
+         * We intentionally do not automatically downgrade after the final
+         * child is removed because the landlord may have explicitly selected
+         * MULTI_UNITS_HOME.
          */
-        validateRentalStructureFields(dto, errors);
+        if (inventory.hasChildUnits() && home.getRentalStructure() != HomeRentalStructure.MULTI_UNITS_HOME) {
+
+            home.setRentalStructure(HomeRentalStructure.MULTI_UNITS_HOME);
+        }
 
 
-        if (!errors.isEmpty()) {
-            throw new FieldValidationException(
-                    "Please complete all required home fields correctly.",
-                    errors
-            );
+        HomeRentalStructure structure =
+                Optional.ofNullable(home.getRentalStructure())
+                        .orElse(HomeRentalStructure.WHOLE_HOME);
+
+
+        /*
+         * Explicit manual/business statuses override derived inventory.
+         *
+         * Example:
+         * BLOCKED / RENTED / RESERVED must not suddenly become
+         * AVAILABLE_AS_MULTI_UNITS because a child Room changes.
+         */
+        if (isProtectedStatus(home.getStatus())) {
+
+            homeRepository.save(home);
+
+            return;
         }
 
 
         /*
-         * Duplicate Home number check should run after
+         * WHOLE_HOME cannot keep a stale MULTI-UNIT status.
          */
-        if (homeRepository.existsByLandlordIdAndHomeNumberIgnoreCaseAndDeletedFalse(authenticatedLandlordId, dto.getHomeNumber())) {
-            throw new BusinessConflictException(
-                    "Home number already exists for this landlord."
+        if (structure == HomeRentalStructure.WHOLE_HOME) {
+
+            if (isAutoManagedStatus(statusCode(home.getStatus()))) {
+
+                home.setStatus(requiredHomeStatus(AVAILABLE));
+            }
+
+            homeRepository.save(home);
+
+            return;
+        }
+
+
+        String targetStatus = calculateMultiUnitStatus(inventory);
+
+
+        if (!targetStatus.equalsIgnoreCase(
+                statusCode(home.getStatus())
+        )) {
+
+            home.setStatus(
+                    requiredHomeStatus(
+                            targetStatus
+                    )
             );
         }
 
+
+        homeRepository.save(home);
     }
 
 
-    private EntityHomes getOwnedHome(
-            Long homeId,
-            Long authenticatedLandlordId
-    ) {
-        validateId(homeId, "homeId", "Home id is required.");
+    // =========================================================
+    // SMART INVENTORY CALCULATION
+    // =========================================================
 
-        if (authenticatedLandlordId == null
-                || authenticatedLandlordId <= 0) {
-            throw new AccessDeniedException(
-                    "Authenticated landlord id is required."
-            );
+    /**
+     * Builds the real rentable inventory of the Home.
+     *
+     * Important:
+     *
+     * 1. Direct Home Rooms count individually.
+     *
+     * 2. Normal Flats count as one rentable Flat.
+     *
+     * 3. Flat divided into Rooms does NOT count again as one Flat.
+     *    Its Rooms count individually instead.
+     *
+     * 4. If some declared direct Home Rooms have not yet been converted
+     *    into independent Room entities, the remaining part of the Home
+     *    counts as one AVAILABLE offer.
+     */
+    private HomeInventory calculateInventory(EntityHomes home) {
+
+        Long homeId = home.getId();
+
+
+        List<EntityRooms> directRooms = roomRepository.findDirectRoomsByHomeId(homeId)
+                                                        .stream()
+                                                        .filter(EntityRooms::isActive)
+                                                        .filter(room -> !room.isDeleted())
+                                                        .toList();
+
+
+        List<EntityFlats> flats = flatsRepository.findDetailsByHomeId(homeId)
+                                                    .stream()
+                                                    .filter(EntityFlats::isActive)
+                                                    .filter(flat -> !flat.isDeleted())
+                                                    .toList();
+
+
+        List<EntityRooms> roomsInsideFlats = roomRepository.findRoomsInsideHomeFlats(homeId)
+                                                            .stream()
+                                                            .filter(EntityRooms::isActive)
+                                                            .filter(room -> !room.isDeleted())
+                                                            .toList();
+
+
+        /*
+         * Store the actual rentable-unit statuses.
+         */
+        List<String> unitStatuses = new ArrayList<>();
+
+
+        // Direct Rooms are always individual units.
+        directRooms.forEach(
+                room -> unitStatuses
+                                                .add(
+                                                        statusCode(
+                                                                room.getStatus()
+                                                        )
+                                                )
+        );
+
+
+        /*
+         * Only Rooms whose Flat is actually split into Rooms should be
+         * counted here.
+         *
+         * Defensive filtering prevents accidentally double counting a
+         * normal whole Flat plus its child records.
+         */
+        roomsInsideFlats.stream()
+                .filter(room ->
+                        room.getFlat() != null
+                                && isFlatDividedIntoRooms(
+                                statusCode(
+                                        room.getFlat().getStatus()
+                                )
+                        )
+                )
+                .forEach(room ->
+                        unitStatuses.add(
+                                statusCode(
+                                        room.getStatus()
+                                )
+                        )
+                );
+
+
+        /*
+         * Whole Flats count as a single rentable unit.
+         *
+         * Flats divided into Rooms do not.
+         */
+        flats.stream()
+                .filter(flat ->
+                        !isFlatDividedIntoRooms(
+                                statusCode(
+                                        flat.getStatus()
+                                )
+                        )
+                )
+                .forEach(flat ->
+                        unitStatuses.add(
+                                statusCode(
+                                        flat.getStatus()
+                                )
+                        )
+                );
+
+
+        long remainingDirectRoomCapacity =
+                Math.max(
+                        0L,
+                        Optional.ofNullable(
+                                home.getNumberOfRooms()
+                        ).orElse(0)
+                                - directRooms.size()
+                );
+
+
+        /*
+         * The remaining portion of the Home is represented as one
+         * AVAILABLE offer.
+         *
+         * Example:
+         *
+         * declared rooms = 5
+         * independent direct Room entities = 2
+         *
+         * remaining Home portion = 1 additional available offer.
+         */
+        if (remainingDirectRoomCapacity > 0) {
+
+            unitStatuses.add(AVAILABLE);
         }
+
+
+        long total = unitStatuses.size();
+
+
+        long available = unitStatuses.stream()
+                        .filter(Objects::nonNull)
+                        .filter(AVAILABLE::equalsIgnoreCase)
+                        .count();
+
+
+        long rented = unitStatuses.stream()
+                        .filter(Objects::nonNull)
+                        .filter(RENTED::equalsIgnoreCase)
+                        .count();
+
+
+        return new HomeInventory(
+                total,
+                available,
+                rented,
+                directRooms.size(),
+                flats.size()
+        );
+    }
+
+
+    /**
+     * Existing available Home derived statuses only distinguish:
+     *
+     * AVAILABLE
+     * FULLY_RENTED
+     * PARTIALLY_RENTED
+     *
+     * Therefore RESERVED / BLOCKED / MAINTENANCE / unknown mixtures
+     * correctly become PARTIALLY_RENTED_AS_MULTI_UNITS.
+     */
+    private String calculateMultiUnitStatus(HomeInventory inventory) {
+
+        if (inventory.total() == 0
+                || inventory.available() == inventory.total()) {
+
+            return AVAILABLE_AS_MULTI_UNITS;
+        }
+
+
+        if (inventory.rented() == inventory.total()) {
+
+            return FULLY_RENTED_AS_MULTI_UNITS;
+        }
+
+
+        return PARTIALLY_RENTED_AS_MULTI_UNITS;
+    }
+
+
+    // =========================================================
+    // STRUCTURE / CAPACITY
+    // =========================================================
+
+    @Transactional(readOnly = true)
+    public HomeRentalStructure calculateHomeStructure(
+            Long homeId
+    ) {
+
+        validateId(
+                homeId,
+                "homeId"
+        );
+
+
+        boolean hasChildren =
+                roomRepository
+                        .countActiveDirectRoomsByHomeId(
+                                homeId,
+                                null
+                        ) > 0
+
+                        || flatsRepository
+                        .countByHomeIdAndActiveTrueAndDeletedFalse(
+                                homeId
+                        ) > 0;
+
+
+        if (hasChildren) {
+
+            return HomeRentalStructure.MULTI_UNITS_HOME;
+        }
+
 
         EntityHomes home =
                 homeRepository.findDetailsById(homeId);
 
+
         if (home == null) {
+
             throw new EntityNotFoundException(
-                    "Home not found with id: " + homeId
+                    "Home not found with id: "
+                            + homeId
             );
         }
 
-        validateOwnership(home, authenticatedLandlordId);
 
-        return home;
-    }
-
-    private EntityUser getLandlord(Long landlordId) {
-
-        if (landlordId == null || landlordId <= 0) {
-            throw new AccessDeniedException("Authenticated landlord id is required.");
-        }
-
-        return userRepository.findById(landlordId).orElseThrow(() -> new EntityNotFoundException("Landlord not found with ID: " + landlordId));
-    }
-
-    private LocationData validateAndGetLocation(Long regionId, Long wilayaId, Long areaId) {
-        Map<String, String> errors = new LinkedHashMap<>();
-
-        if (regionId == null || regionId <= 0) {
-            errors.put("regionId", "Region is required.");
-        }
-
-        if (wilayaId == null || wilayaId <= 0) {
-            errors.put("wilayaId", "Wilaya is required.");
-        }
-
-        if (areaId == null || areaId <= 0) {
-            errors.put("areaId", "Area is required.");
-        }
-
-        if (!errors.isEmpty()) {
-            throw new FieldValidationException("Please complete the location fields correctly.", errors);
-        }
-
-        OmanRegionEntity region = regionRepository.findById(regionId).orElseThrow(() -> new FieldValidationException(
-                "Selected region is invalid.", Map.of("regionId", "Region does not exist.")));
-
-        OmanWilayaEntity wilaya = wilayaRepository.findByIdAndRegionId(wilayaId, regionId);
-
-        if (wilaya == null) {
-            throw new FieldValidationException(
-                    "Selected wilaya is invalid.",
-                    Map.of("wilayaId", "Wilaya does not exist or does not belong to the selected region."));
-        }
-
-        OmanAreaEntity area = areaRepository.findByIdAndWilayaId(areaId, wilayaId);
-
-        if (area == null) {
-            throw new FieldValidationException(
-                    "Selected area is invalid.", Map.of("areaId", "Area does not exist or does not belong to the selected wilaya."));
-        }
-
-        return new LocationData(region, wilaya, area);
+        return Optional.ofNullable(
+                home.getRentalStructure()
+        ).orElse(
+                HomeRentalStructure.WHOLE_HOME
+        );
     }
 
 
-    //in future i will update based on new transaction
-    private EntityUnitStatus resolveInitialHomeStatus(HomeRentalStructure rentalStructure) {
+    @Transactional(readOnly = true)
+    public long calculateRemainingDirectRoomCapacity(
+            EntityHomes home
+    ) {
+
+        if (home == null || home.getId() == null) {
+            return 0L;
+        }
 
 
-        String statusCode = switch (rentalStructure) {
-            case WHOLE_HOME -> "AVAILABLE";
+        long assigned =
+                roomRepository
+                        .countActiveDirectRoomsByHomeId(
+                                home.getId(),
+                                null
+                        );
 
-            case MULTI_UNITS_HOME -> "AVAILABLE_AS_MULTI_UNITS";
+
+        long declared =
+                Optional.ofNullable(
+                        home.getNumberOfRooms()
+                ).orElse(0);
 
 
-        };
-
-        return unitStatusRepository.findByStatusDomainAndCodeAndActiveTrue(HOME_STATUS_DOMAIN, statusCode)
-                .orElseThrow(() -> new IllegalStateException("Required HOME status is not configured: " + statusCode));
+        return Math.max(
+                0L,
+                declared - assigned
+        );
     }
 
-    private EntityUnitStatus getHomeStatusById(Long statusId) {
 
-        EntityUnitStatus status = unitStatusRepository.findById(statusId).orElseThrow(() -> new IllegalArgumentException("Status not found or inactive with ID: " + statusId));
+    private void validateRoomCountReduction(
+            EntityHomes home,
+            int newCount
+    ) {
 
-        validateHomeStatusDomain(status);
+        if (newCount <= 0) {
+
+            throw new BusinessConflictException(
+                    "Home must have at least one declared room."
+            );
+        }
+
+
+        long assigned =
+                roomRepository
+                        .countActiveDirectRoomsByHomeId(
+                                home.getId(),
+                                null
+                        );
+
+
+        if (newCount < assigned) {
+
+            throw new BusinessConflictException(
+                    "Home room count cannot be reduced to "
+                            + newCount
+                            + " because "
+                            + assigned
+                            + " active direct Room(s) are already assigned."
+            );
+        }
+    }
+
+
+    // =========================================================
+    // STATUS RULES
+    // =========================================================
+
+    /**
+     * Explicit statuses win over calculated inventory.
+     *
+     * AVAILABLE is intentionally NOT protected.
+     *
+     * Otherwise an AVAILABLE Home would never become
+     * AVAILABLE_AS_MULTI_UNITS after the first child is created.
+     */
+    private boolean isProtectedStatus(EntityUnitStatus status) {
+
+        if (status == null) {
+            return false;
+        }
+
+
+        String code = normalizeStatus(status.getCode());
+
+
+        if (code != null && PROTECTED_HOME_STATUSES.contains(code)) {
+
+            return true;
+        }
+
+
+        /*
+         * Lifecycle statuses are always protected.
+         */
+        if (status.getStatusLevel() == StatusLevel.L) {
+
+            return true;
+        }
+
+
+        /*
+         * Future-safe:
+         *
+         * unknown Unit-level statuses are protected.
+         *
+         * AVAILABLE and known auto statuses are allowed to recalculate.
+         */
+        return status.getStatusLevel() == StatusLevel.U
+                && !AVAILABLE.equals(code)
+                && !isAutoManagedStatus(code);
+    }
+
+
+    private boolean isAutoManagedStatus(String code) {
+
+        String normalized = normalizeStatus(code);
+
+        return normalized != null
+                && AUTO_MANAGED_HOME_STATUSES.contains(
+                normalized
+        );
+    }
+
+
+    private EntityUnitStatus initialHomeStatus(
+            HomeRentalStructure structure
+    ) {
+
+        if (structure == null) {
+
+            throw fieldError(
+                    "rentalStructure",
+                    "Home rental structure is required."
+            );
+        }
+
+
+        return requiredHomeStatus(
+                structure == HomeRentalStructure.MULTI_UNITS_HOME
+                        ? AVAILABLE_AS_MULTI_UNITS
+                        : AVAILABLE
+        );
+    }
+
+
+    /**
+     * One method performs all validation needed for a manually selected
+     * HOME status.
+     */
+    private EntityUnitStatus getManualHomeStatus(
+            Long statusId
+    ) {
+
+        validateId(
+                statusId,
+                "statusId"
+        );
+
+
+        EntityUnitStatus status =
+                unitStatusRepository
+                        .findById(statusId)
+                        .orElseThrow(() ->
+                                new EntityNotFoundException(
+                                        "Status not found with id: "
+                                                + statusId
+                                )
+                        );
+
+
+        if (!status.isActive()) {
+
+            throw new BusinessConflictException(
+                    "Selected HOME status is inactive."
+            );
+        }
+
+
+        if (!StatusDomain.HOME.name()
+                .equalsIgnoreCase(
+                        status.getStatusDomain()
+                )) {
+
+            throw new BusinessConflictException(
+                    "Selected status does not belong to HOME domain."
+            );
+        }
+
+
+        if (status.getStatusLevel() != StatusLevel.S) {
+
+            throw new BusinessConflictException(
+                    "Only setup-level HOME statuses can be selected manually."
+            );
+        }
+
+
+        if (isAutoManagedStatus(
+                status.getCode()
+        )) {
+
+            throw new BusinessConflictException(
+                    "This HOME status is managed automatically from child inventory."
+            );
+        }
+
 
         return status;
     }
 
 
-    private EntityUnitStatus getHomeStatusByCode(String code) {
-
-        return unitStatusRepository.findByStatusDomainAndCodeAndActiveTrue(HOME_STATUS_DOMAIN, code)
-                .orElseThrow(() -> new IllegalStateException("HOME status is not configured: " + code));
-    }
-
-
-    private void validateSetupStatus(EntityUnitStatus status) {
-        if (status == null || status.getStatusLevel() != StatusLevel.S) {
-            throw new BusinessConflictException(
-                    "Only setup-level HOME statuses can be selected manually."
-            );
-        }
-    }
-
-    private boolean isHomeRefreshProtected(EntityUnitStatus status) {
-        if (status == null || status.getStatusLevel() == null) {
-            return false;
-        }
-
-        if (status.getStatusLevel() == StatusLevel.L) {
-            return true;
-        }
-
-        return status.getStatusLevel() == StatusLevel.U && !AUTO_MANAGED_HOME_STATUSES.contains((status.getCode()));
-    }
-
-    private void validateHomeStatusDomain(EntityUnitStatus status) {
-
-        if (!HOME_STATUS_DOMAIN.equalsIgnoreCase(status.getStatusDomain())) {
-            throw new IllegalArgumentException("Selected status does not belong to HOME domain.");
-        }
-    }
-
-
-    //i will imrove it, to enable home rent rooms and whole home at the same time. because sometimes rooms in al molhaq home
-    private void validateRentalStructureFields(
-            HomeCreateRequestDTO dto,
-            Map<String, String> errors
+    private void validateManualStatusTransition(
+            EntityHomes home,
+            String requestedCode
     ) {
-        if (isBlank(dto.getTenantType())) {
-            errors.put("tenantType", "Tenant type is required.");
-        }
-        if (isBlank(dto.getRentTimeType())) {
-            errors.put("rentTimeType", "Rent time type is required.");
-        }
-        if (dto.getPrice() == null) {
-            errors.put("price", "Home price is required.");
-        } else if (dto.getPrice().compareTo(BigDecimal.ZERO) < 0) {
-            errors.put("price", "Home price cannot be negative.");
-        }
-    }
 
-    private void validateHomeRoomCountReduction(EntityHomes home, int newCount) {
-        if (newCount <= 0) {
-            throw new BusinessConflictException("Home must have at least one declared direct room.");
-        }
-        long assigned = roomRepository.countActiveDirectRoomsByHomeId(home.getId(), null);
-        if (newCount < assigned) {
-            throw new BusinessConflictException(
-                    "Home room count cannot be reduced to " + newCount
-                            + " because " + assigned + " active direct Room(s) are already assigned."
-            );
-        }
-    }
+        String code =
+                normalizeStatus(
+                        requestedCode
+                );
 
-    private void validateManualStatusTransition(EntityHomes home, String requestedCode) {
-        if (requestedCode == null) return;
 
-        String normalized = requestedCode.trim().toUpperCase(Locale.ROOT);
-        if (AUTO_MANAGED_HOME_STATUSES.contains(normalized)) {
-            throw new BusinessConflictException(
-                    "This Home status is managed automatically from child inventory."
-            );
+        if (code == null) {
+            return;
         }
 
-        if (("RENTED".equals(normalized) || "RESERVED".equals(normalized))
-                && home.getRentalStructure() == HomeRentalStructure.MULTI_UNITS_HOME
-                && calculateRemainingDirectRoomCapacity(home) <= 0) {
-            throw new BusinessConflictException(
-                    "The remaining Home cannot be rented or reserved because all declared direct rooms "
-                            + "have already been assigned as independent Room units."
-            );
-        }
-    }
-
-    private HomeUnitCountsDTO getHomeUnitCounts(Long homeId) {
-
-        List<EntityFlats> flats = flatsRepository
-                .findDetailsByHomeId(homeId)
-                .stream()
-                .filter(EntityFlats::isActive)
-                .filter(flat -> !flat.isDeleted())
-                .toList();
-
-        List<EntityRooms> directRooms = roomRepository
-                .findDirectRoomsByHomeId(homeId)
-                .stream()
-                .filter(EntityRooms::isActive)
-                .filter(room -> !room.isDeleted())
-                .toList();
-
-        List<EntityRooms> flatRooms = roomRepository
-                .findRoomsInsideHomeFlats(homeId)
-                .stream()
-                .filter(EntityRooms::isActive)
-                .filter(room -> !room.isDeleted())
-                .toList();
-
-
-        long flatsAvailable = countFlatsWithStatuses(flats, Set.of("AVAILABLE"));
-
-        long flatsRented = countFlatsWithStatuses(flats, Set.of("RENTED"));
-
-        long flatsReserved = countFlatsWithStatuses(flats, Set.of("RESERVED"));
-
-        long flatsMaintenance = countFlatsWithStatuses(flats, Set.of("UNDER_MAINTENANCE"));
-
-        long flatsBlocked = countFlatsWithStatuses(flats, Set.of("BLOCKED"));
-
-        List<EntityRooms> allRooms = new ArrayList<>();
-
-        allRooms.addAll(directRooms);
-        allRooms.addAll(flatRooms);
-
-        long roomsAvailable = countRoomsWithStatus(allRooms, "AVAILABLE");
-
-        long roomsRented = countRoomsWithStatus(allRooms, "RENTED");
-
-        long roomsReserved = countRoomsWithStatus(allRooms, "RESERVED");
-
-        long roomsMaintenance = countRoomsWithStatus(allRooms, "UNDER_MAINTENANCE");
-
-        long roomsBlocked = countRoomsWithStatus(allRooms, "BLOCKED");
 
         /*
-         * Flats divided into rooms are not whole rentable flat units.
+         * The remaining Home portion cannot be rented/reserved if all
+         * declared direct Room capacity has already been converted into
+         * independent Room entities.
          */
-        long wholeFlatUnits = flats
-                .stream()
-                .filter(flat -> !isFlatDividedIntoRooms(statusCode(flat.getStatus())))
-                .count();
+        if ((RENTED.equals(code)
+                || RESERVED.equals(code))
 
-        long totalRooms = allRooms.size();
+                && home.getRentalStructure()
+                == HomeRentalStructure.MULTI_UNITS_HOME
+
+                && calculateRemainingDirectRoomCapacity(home)
+                <= 0) {
+
+            throw new BusinessConflictException(
+                    "The remaining Home cannot be rented or reserved because "
+                            + "all declared direct Rooms are already assigned "
+                            + "as independent Room units."
+            );
+        }
+    }
+
+
+    private EntityUnitStatus requiredHomeStatus(
+            String code
+    ) {
+
+        return unitStatusService
+                .getRequiredStatus(
+                        StatusDomain.HOME,
+                        code
+                );
+    }
+
+
+    // =========================================================
+    // HOME NUMBER
+    // =========================================================
+
+    private void validateHomeNumberUnique(
+            Long landlordId,
+            String homeNumber,
+            Long currentHomeId
+    ) {
+
+        String cleaned =
+                cleanRequired(
+                        homeNumber,
+                        "Home number is required."
+                );
+
+
+        boolean exists =
+                homeRepository
+                        .existsByLandlordIdAndHomeNumberIgnoreCaseAndDeletedFalse(
+                                landlordId,
+                                cleaned
+                        );
+
+
+        if (!exists) {
+            return;
+        }
+
+
+        /*
+         * During update the repository sees the current Home itself.
+         */
+        if (currentHomeId != null) {
+
+            EntityHomes current =
+                    homeRepository
+                            .findDetailsById(
+                                    currentHomeId
+                            );
+
+
+            if (current != null
+                    && current.getLandlord() != null
+                    && Objects.equals(
+                    current.getLandlord().getId(),
+                    landlordId
+            )
+                    && cleaned.equalsIgnoreCase(
+                    current.getHomeNumber()
+            )) {
+
+                return;
+            }
+        }
+
+
+        throw new BusinessConflictException(
+                "Home number already exists for this landlord."
+        );
+    }
+
+
+    // =========================================================
+    // LOCATION
+    // =========================================================
+
+    private LocationData getValidLocation(Long regionId, Long wilayaId, Long areaId) {
+
+        validateId(regionId, "regionId");
+        validateId(wilayaId, "wilayaId");
+        validateId(areaId, "areaId");
+
+
+        OmanRegionEntity region = regionRepository.findById(regionId)
+                                                  .orElseThrow(() -> fieldError("regionId", "Region does not exist."));
+
+
+        OmanWilayaEntity wilaya = wilayaRepository.findByIdAndRegionId(wilayaId, regionId);
+
+
+        if (wilaya == null) {
+
+            throw fieldError("wilayaId", "Wilaya does not exist or does not belong to the selected region.");
+        }
+
+
+        OmanAreaEntity area = areaRepository.findByIdAndWilayaId(areaId, wilayaId);
+
+
+        if (area == null) {
+
+            throw fieldError("areaId", "Area does not exist or does not belong to the selected wilaya.");
+        }
+
+
+        return new LocationData(region, wilaya, area);
+    }
+
+
+    // =========================================================
+    // UPDATE FIELDS
+    // =========================================================
+
+    private void applyUpdateFields(EntityHomes home, HomeUpdateRequestDTO dto) {
+
+        if (dto.getHomeType() != null) {
+            home.setHomeType(dto.getHomeType());
+        }
+
+        if (dto.getHomeNumber() != null) {
+            home.setHomeNumber(
+                    cleanRequired(
+                            dto.getHomeNumber(),
+                            "Home number is required."
+                    )
+            );
+        }
+
+
+        if (dto.getNumberOfRooms() != null) {
+            home.setNumberOfRooms(dto.getNumberOfRooms());
+        }
+
+        if (dto.getNumberOfBathrooms() != null) {
+            home.setNumberOfBathrooms(dto.getNumberOfBathrooms());
+        }
+
+
+        if (dto.getHasLivingRoom() != null) {
+            home.setHasLivingRoom(dto.getHasLivingRoom());
+        }
+
+
+        if (dto.getFurnished() != null) {
+            home.setFurnished(dto.getFurnished());
+        }
+
+
+        if (dto.getNumberOfFloor() != null) {
+            home.setNumberOfFloor(dto.getNumberOfFloor());
+        }
+
+
+        if (dto.getDescription() != null) {
+            home.setDescription(clean(dto.getDescription()));
+        }
+
+
+        updateLocationIfRequested(home, dto);
+
+
+        if (dto.getLatitude() != null) {
+            home.setLatitude(
+                    dto.getLatitude()
+            );
+        }
+
+
+        if (dto.getLongitude() != null) {
+            home.setLongitude(
+                    dto.getLongitude()
+            );
+        }
+
+
+        if (dto.getTenantType() != null) {
+            home.setTenantType(
+                    clean(dto.getTenantType())
+            );
+        }
+
+
+        if (dto.getRentType() != null) {
+            home.setRentType(
+                    clean(dto.getRentType())
+            );
+        }
+
+
+        if (dto.getPrice() != null) {
+            home.setPrice(
+                    dto.getPrice()
+            );
+        }
+    }
+
+
+    private void updateLocationIfRequested(EntityHomes home, HomeUpdateRequestDTO dto) {
+
+        if (dto.getRegionId() == null && dto.getWilayaId() == null && dto.getAreaId() == null) {
+            return;
+        }
+
+
+        Long regionId =
+                dto.getRegionId() != null
+                        ? dto.getRegionId()
+                        : idOf(home.getRegion());
+
+
+        Long wilayaId =
+                dto.getWilayaId() != null
+                        ? dto.getWilayaId()
+                        : idOf(home.getWilaya());
+
+
+        Long areaId =
+                dto.getAreaId() != null
+                        ? dto.getAreaId()
+                        : idOf(home.getArea());
+
+
+        LocationData location = getValidLocation(regionId, wilayaId, areaId);
+
+
+        home.setRegion(location.region());
+
+        home.setWilaya(location.wilaya());
+
+        home.setArea(location.area());
+    }
+
+
+    // =========================================================
+    // ENTITY LOOKUPS / OWNERSHIP
+    // =========================================================
+
+    private EntityHomes getOwnedHome(Long homeId, Long landlordId) {
+
+        validateId(homeId, "homeId");
+
+        validateAuthenticatedLandlord(landlordId);
+
+
+        EntityHomes home = homeRepository.findDetailsById(homeId);
+
+
+        if (home == null) {
+
+            throw new EntityNotFoundException("Home not found with id: " + homeId);
+        }
+
+
+        if (home.getLandlord() == null || !Objects.equals(home.getLandlord().getId(), landlordId)) {
+
+            throw new AccessDeniedException("You are not allowed to access this Home.");
+        }
+
+
+        return home;
+    }
+
+
+    private EntityUser getLandlord(Long landlordId) {
+
+        return userRepository.findById(landlordId).orElseThrow(() -> new EntityNotFoundException("Landlord not found with id: " + landlordId));
+    }
+
+
+    // =========================================================
+    // COUNTS
+    // =========================================================
+
+    private HomeUnitCountsDTO getUnitCounts(Long homeId) {
+
+        validateId(homeId, "homeId");
+
+        return toCountsDTO(homeRepository.getHomeUnitCounts(homeId)
+        );
+    }
+
+
+    private HomeUnitCountsDTO toCountsDTO(HomeUnitCountsProjection projection) {
+
+        if (projection == null) {
+            return emptyCounts();
+        }
+
+
+        long directRooms = zero(projection.getDirectRooms());
+        long roomsInFlat = zero(projection.getRoomsInFlat());
+
+        long totalRooms = directRooms + roomsInFlat;
+
+        long flatsAvailable = zero(projection.getFlatsAvailable());
+
+        long flatsRented = zero(projection.getFlatsRented());
+
+        long flatsReserved = zero(projection.getFlatsReserved());
+
+        long flatsMaintenance = zero(projection.getFlatsUnderMaintenance());
+
+        long flatsBlocked = zero(projection.getFlatsBlocked());
+
+        long roomsAvailable = zero(projection.getRoomsAvailable());
+
+        long roomsRented = zero(projection.getRoomsRented());
+
+        long roomsReserved = zero(projection.getRoomsReserved());
+
+        long roomsMaintenance = zero(projection.getRoomsUnderMaintenance());
+
+        long roomsBlocked = zero(projection.getRoomsBlocked());
 
         return HomeUnitCountsDTO.builder()
-                .totalFlats(flats.size())
+
+                .totalFlats(zero(projection.getTotalFlats()))
                 .flatsAvailable(flatsAvailable)
                 .flatsRented(flatsRented)
+                .flatsRentedAsRooms(zero(projection.getFlatsRentedAsRooms()))
                 .flatsReserved(flatsReserved)
                 .flatsUnderMaintenance(flatsMaintenance)
                 .flatsBlocked(flatsBlocked)
-                .directRooms(directRooms.size())
-                .flatsRentedAsRooms(flatRooms.size())
                 .totalRooms(totalRooms)
+                .directRooms(directRooms)
+                .roomsInFlat(roomsInFlat)
                 .roomsAvailable(roomsAvailable)
                 .roomsRented(roomsRented)
                 .roomsReserved(roomsReserved)
@@ -704,268 +1311,11 @@ public class HomeServiceImpl implements HomeServiceInterface {
                 .build();
     }
 
-    private long countFlatsWithStatuses(List<EntityFlats> flats, Set<String> statusCodes) {
-        return flats.stream()
-                .filter(flat -> flat.getStatus() != null)
-                .filter(flat -> statusCodes.contains(flat.getStatus().getCode().toUpperCase(Locale.ROOT)))
-                .count();
-    }
-
-    private long countRoomsWithStatus(List<EntityRooms> rooms, String statusCode) {
-        return rooms.stream()
-                .filter(room -> room.getStatus() != null)
-                .filter(room -> statusCode.equalsIgnoreCase(room.getStatus().getCode()))
-                .count();
-    }
-
-    private boolean isFlatDividedIntoRooms(String code) {
-        return "AVAILABLE_AS_ROOMS".equalsIgnoreCase(code)
-                || "PARTIALLY_RENTED_AS_ROOMS".equalsIgnoreCase(code)
-                || "FULLY_RENTED_AS_ROOMS".equalsIgnoreCase(code);
-    }
-
-    private String statusCode(EntityUnitStatus status) {
-        return status == null ? null : status.getCode();
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
-    }
-
-    private String clean(String value) {
-        return value == null ? null : value.trim();
-    }
-
-    private String cleanRequired(String value, String message) {
-        if (isBlank(value)) {
-            throw new IllegalArgumentException(message);
-        }
-
-        return value.trim();
-    }
-
-
-    private void updateHomeFields(EntityHomes home, HomeUpdateRequestDTO dto) {
-
-        if (dto.getHomeType() != null) {
-            home.setHomeType(dto.getHomeType());
-        }
-
-        if (dto.getHomeNumber() != null) {
-            home.setHomeNumber(dto.getHomeNumber());
-        }
-
-        if (dto.getNumberOfRooms() != null) {
-            home.setNumberOfRooms(dto.getNumberOfRooms());
-        }
-
-        if (dto.getNumberOfBathrooms() != null) {
-            home.setNumberOfBathrooms(dto.getNumberOfBathrooms());
-        }
-
-        if (dto.getHasLivingRoom() != null) {
-            home.setHasLivingRoom(dto.getHasLivingRoom());
-        }
-
-        if (dto.getFurnished() != null) {
-            home.setFurnished(dto.getFurnished());
-        }
-
-        if (dto.getNumberOfFloor() != null) {
-            home.setNumberOfFloor(dto.getNumberOfFloor());
-        }
-
-        if (dto.getDescription() != null) {
-            home.setDescription(dto.getDescription());
-        }
-
-        if (dto.getRegionId() != null || dto.getWilayaId() != null || dto.getAreaId() != null) {
-
-            Long regionId = dto.getRegionId() != null
-                    ? dto.getRegionId()
-                    : home.getRegion().getId();
-
-            Long wilayaId = dto.getWilayaId() != null
-                    ? dto.getWilayaId()
-                    : home.getWilaya().getId();
-
-            Long areaId = dto.getAreaId() != null
-                    ? dto.getAreaId()
-                    : home.getArea().getId();
-
-            LocationData locationData = validateAndGetLocation(regionId, wilayaId, areaId);
-
-            home.setRegion(locationData.region());
-            home.setWilaya(locationData.wilaya());
-            home.setArea(locationData.area());
-        }
-
-        if (dto.getLatitude() != null) {
-            home.setLatitude(dto.getLatitude());
-        }
-
-        if (dto.getLongitude() != null) {
-            home.setLongitude(dto.getLongitude());
-        }
-
-        if (dto.getTenantType() != null) {
-            home.setTenantType(dto.getTenantType());
-        }
-
-        if (dto.getRentType() != null) {
-            home.setRentType(dto.getRentType());
-        }
-
-        if (dto.getPrice() != null) {
-            home.setPrice(dto.getPrice());
-        }
-    }
-
-
-    private HomeDetailsDTO toDetailsDTO(EntityHomes home) {
-
-        EntityUser landlord = home.getLandlord();
-
-        return HomeDetailsDTO.builder()
-                .id(home.getId())
-                .homeType(home.getHomeType())
-                .rentalStructure(home.getRentalStructure())
-                .homeNumber(home.getHomeNumber())
-                .numberOfRooms(home.getNumberOfRooms())
-                .numberOfBathrooms(home.getNumberOfBathrooms())
-                .hasLivingRoom(home.isHasLivingRoom())
-                .furnished(home.isFurnished())
-                .numberOfFloor(home.getNumberOfFloor())
-                .description(home.getDescription())
-                .location(toLocationDTO(home))
-                .tenantType(home.getTenantType())
-                .rentType(home.getRentType())
-                .price(home.getPrice())
-                .status(toStatusDTO(home.getStatus()))
-                .unitCounts(getUnitCounts(home.getId()))
-                .landlordId(landlord != null ? landlord.getId() : null)
-                .landlordName(getLandlordFullName(landlord))
-                .landlordMobileNumber(
-                        landlord != null
-                                ? landlord.getPhoneNumber()
-                                : null
-                )
-                .active(home.isActive())
-                .deleted(home.isDeleted())
-                .createdAt(home.getCreatedAt())
-                .updatedAt(home.getUpdatedAt())
-                .images(getImages(home.getId()))
-                .build();
-    }
-
-    private HomeListDTO toListDTO(EntityHomes home, HomeUnitCountsProjection projection) {
-        HomeUnitCountsDTO counts = toCountsDTO(projection);
-
-        EntityUnitStatus status = home.getStatus();
-
-        return HomeListDTO.builder()
-                .id(home.getId())
-                .homeType(home.getHomeType())
-                .homeNumber(home.getHomeNumber())
-                .rentalStructure(home.getRentalStructure())
-                .region(home.getRegion() != null ? home.getRegion().getNameEn() : null)
-                .wilaya(home.getWilaya() != null ? home.getWilaya().getNameEn() : null)
-                .area(home.getArea() != null ? home.getArea().getNameEn() : null)
-                .statusCode(status != null ? status.getCode() : null)
-                .statusNameEn(status != null ? status.getNameEn() : null)
-                .statusNameAr(status != null ? status.getNameAr() : null)
-                .statusColorCode(status != null ? status.getColorCode() : null)
-                .statusIcon(status != null ? status.getIcon() : null)
-                .numberOfFloors(home.getNumberOfFloor())
-                .declaredNumberOfRooms(home.getNumberOfRooms())
-                .numberOfBathrooms(home.getNumberOfBathrooms())
-                .price(home.getPrice())
-                .rentType(home.getRentType())
-                .totalFlats(counts.getTotalFlats())
-                .totalRooms(counts.getTotalRooms())
-                .availableUnits(counts.getAvailableUnits())
-                .rentedUnits(counts.getRentedUnits())
-                .maintenanceUnits(counts.getMaintenanceUnits())
-                .mainImageUrls(getPictureUrls(home.getId()))
-                .build();
-    }
-
-
-    private HomeUnitCountsDTO getUnitCounts(Long homeId) {
-        validateId(homeId, "homeId", "Home id is required.");
-
-        return toCountsDTO(
-                homeRepository.getHomeUnitCounts(homeId)
-        );
-    }
-
-    private HomeUnitCountsDTO toCountsDTO( HomeUnitCountsProjection projection) {
-        if (projection == null) {
-            return emptyCounts();
-        }
-
-        long directRooms = nullToZero(projection.getDirectRooms());
-
-        long roomsInFlat = nullToZero(projection.getRoomsInFlat());
-
-        long totalRooms = nullToZero(projection.getTotalRooms());
-
-        /*
-         * Defensive consistency check.
-         */
-        if (totalRooms != directRooms + roomsInFlat) {
-            totalRooms = directRooms + roomsInFlat;
-        }
-
-        long flatsAvailable = nullToZero(projection.getFlatsAvailable());
-
-        long flatsRented = nullToZero(projection.getFlatsRented());
-
-        long flatsReserved = nullToZero(projection.getFlatsReserved());
-
-        long flatsUnderMaintenance = nullToZero(projection.getFlatsUnderMaintenance());
-
-        long flatsBlocked = nullToZero(projection.getFlatsBlocked());
-
-        long roomsAvailable = nullToZero(projection.getRoomsAvailable());
-
-        long roomsRented = nullToZero(projection.getRoomsRented());
-
-        long roomsReserved = nullToZero(projection.getRoomsReserved());
-
-        long roomsUnderMaintenance = nullToZero(projection.getRoomsUnderMaintenance());
-
-        long roomsBlocked = nullToZero(projection.getRoomsBlocked());
-
-        return HomeUnitCountsDTO.builder()
-                .totalFlats(nullToZero(projection.getTotalFlats()))
-                .flatsAvailable(flatsAvailable)
-                .flatsRented(flatsRented)
-                .flatsRentedAsRooms(nullToZero(projection.getFlatsRentedAsRooms()))
-                .flatsReserved(flatsReserved)
-                .flatsUnderMaintenance(flatsUnderMaintenance)
-                .flatsBlocked(flatsBlocked)
-                .totalRooms(totalRooms)
-                .directRooms(directRooms)
-                .roomsInFlat(roomsInFlat)
-                .roomsAvailable(roomsAvailable)
-                .roomsRented(roomsRented)
-                .roomsReserved(roomsReserved)
-                .roomsUnderMaintenance(roomsUnderMaintenance)
-                .roomsBlocked(roomsBlocked)
-
-                .availableUnits(flatsAvailable + roomsAvailable)
-                .rentedUnits(flatsRented + roomsRented)
-                .maintenanceUnits(flatsUnderMaintenance + roomsUnderMaintenance)
-
-
-
-                .build();
-    }
-
 
     private HomeUnitCountsDTO emptyCounts() {
+
         return HomeUnitCountsDTO.builder()
+
                 .totalFlats(0)
                 .flatsAvailable(0)
                 .flatsRented(0)
@@ -988,68 +1338,299 @@ public class HomeServiceImpl implements HomeServiceInterface {
                 .reservedUnits(0)
                 .maintenanceUnits(0)
                 .blockedUnits(0)
+
                 .build();
     }
 
 
-    private Map<Long, HomeUnitCountsProjection> toCountsMap(
-            List<HomeUnitCountsProjection> projections
-    ) {
+    private Map<Long, HomeUnitCountsProjection> toCountsMap(List<HomeUnitCountsProjection> projections) {
+
         if (projections == null || projections.isEmpty()) {
             return Map.of();
         }
 
+
         return projections.stream()
-                .filter(projection -> projection.getHomeId() != null)
-                .collect(Collectors.toMap(
-                        HomeUnitCountsProjection::getHomeId,
-                        Function.identity(),
-                        (first, ignored) -> first,
-                        LinkedHashMap::new
-                ));
-    }
 
+                .filter(projection ->
+                        projection.getHomeId() != null
+                )
 
-    private long nullToZero(Long value) {
-        return value == null ? 0L : value;
-    }
-
-    private void validateId(
-            Long id,
-            String fieldName,
-            String message
-    ) {
-        if (id == null || id <= 0) {
-            throw new FieldValidationException(
-                    message,
-                    Map.of(fieldName, message)
-            );
-        }
-    }
-
-    private List<PropertyMediaDTO> getImages(Long homeId) {
-        List<PropertyMediaDTO> images =
-                propertyMediaService.getImages(
-                        PropertyType.HOME,
-                        homeId
+                .collect(
+                        Collectors.toMap(
+                                HomeUnitCountsProjection::getHomeId,
+                                Function.identity(),
+                                (first, ignored) -> first,
+                                LinkedHashMap::new
+                        )
                 );
-
-        return images == null
-                ? List.of()
-                : images;
     }
 
-    private List<String> getPictureUrls(Long homeId) {
-        return getImages(homeId)
-                .stream()
-                .map(PropertyMediaDTO::getFileUrl)
-                .toList();
+
+    // =========================================================
+    // DETAILS DTO
+    // =========================================================
+
+    private HomeDetailsDTO toDetailsDTO(
+            EntityHomes home
+    ) {
+
+        EntityUser landlord =
+                home.getLandlord();
+
+
+        return HomeDetailsDTO.builder()
+
+                .id(home.getId())
+
+                .homeType(
+                        home.getHomeType()
+                )
+
+                .rentalStructure(
+                        home.getRentalStructure()
+                )
+
+                .homeNumber(
+                        home.getHomeNumber()
+                )
+
+                .numberOfRooms(
+                        home.getNumberOfRooms()
+                )
+
+                .numberOfBathrooms(
+                        home.getNumberOfBathrooms()
+                )
+
+                .hasLivingRoom(
+                        home.isHasLivingRoom()
+                )
+
+                .furnished(
+                        home.isFurnished()
+                )
+
+                .numberOfFloor(
+                        home.getNumberOfFloor()
+                )
+
+                .description(
+                        home.getDescription()
+                )
+
+                .location(
+                        toLocationDTO(home)
+                )
+
+                .tenantType(
+                        home.getTenantType()
+                )
+
+                .rentType(
+                        home.getRentType()
+                )
+
+                .price(
+                        home.getPrice()
+                )
+
+                .status(
+                        toStatusDTO(
+                                home.getStatus()
+                        )
+                )
+
+                .unitCounts(
+                        getUnitCounts(
+                                home.getId()
+                        )
+                )
+
+                .landlordId(
+                        landlord != null
+                                ? landlord.getId()
+                                : null
+                )
+
+                .landlordName(
+                        landlordName(
+                                landlord
+                        )
+                )
+
+                .landlordMobileNumber(
+                        landlord != null
+                                ? landlord.getPhoneNumber()
+                                : null
+                )
+
+                .active(
+                        home.isActive()
+                )
+
+                .deleted(
+                        home.isDeleted()
+                )
+
+                .createdAt(
+                        home.getCreatedAt()
+                )
+
+                .updatedAt(
+                        home.getUpdatedAt()
+                )
+
+                .images(
+                        getImages(
+                                home.getId()
+                        )
+                )
+
+                .build();
     }
 
-    private UnitStatusDTO toStatusDTO(EntityUnitStatus status) {
+
+    // =========================================================
+    // LIST DTO
+    // =========================================================
+
+    private HomeListDTO toListDTO(
+            EntityHomes home,
+            HomeUnitCountsProjection projection
+    ) {
+
+        HomeUnitCountsDTO counts =
+                toCountsDTO(projection);
+
+        EntityUnitStatus status =
+                home.getStatus();
+
+
+        return HomeListDTO.builder()
+
+                .id(home.getId())
+
+                .homeType(
+                        home.getHomeType()
+                )
+
+                .homeNumber(
+                        home.getHomeNumber()
+                )
+
+                .rentalStructure(
+                        home.getRentalStructure()
+                )
+
+                .region(
+                        home.getRegion() != null
+                                ? home.getRegion().getNameEn()
+                                : null
+                )
+
+                .wilaya(
+                        home.getWilaya() != null
+                                ? home.getWilaya().getNameEn()
+                                : null
+                )
+
+                .area(
+                        home.getArea() != null
+                                ? home.getArea().getNameEn()
+                                : null
+                )
+
+                .statusCode(
+                        statusCode(status)
+                )
+
+                .statusNameEn(
+                        status != null
+                                ? status.getNameEn()
+                                : null
+                )
+
+                .statusNameAr(
+                        status != null
+                                ? status.getNameAr()
+                                : null
+                )
+
+                .statusColorCode(
+                        status != null
+                                ? status.getColorCode()
+                                : null
+                )
+
+                .statusIcon(
+                        status != null
+                                ? status.getIcon()
+                                : null
+                )
+
+                .numberOfFloors(
+                        home.getNumberOfFloor()
+                )
+
+                .declaredNumberOfRooms(
+                        home.getNumberOfRooms()
+                )
+
+                .numberOfBathrooms(
+                        home.getNumberOfBathrooms()
+                )
+
+                .price(
+                        home.getPrice()
+                )
+
+                .rentType(
+                        home.getRentType()
+                )
+
+                .totalFlats(
+                        counts.getTotalFlats()
+                )
+
+                .totalRooms(
+                        counts.getTotalRooms()
+                )
+
+                .availableUnits(
+                        counts.getAvailableUnits()
+                )
+
+                .rentedUnits(
+                        counts.getRentedUnits()
+                )
+
+                .maintenanceUnits(
+                        counts.getMaintenanceUnits()
+                )
+
+                .mainImageUrls(
+                        getPictureUrls(
+                                home.getId()
+                        )
+                )
+
+                .build();
+    }
+
+
+    // =========================================================
+    // SMALL DTO MAPPERS
+    // =========================================================
+
+    private UnitStatusDTO toStatusDTO(
+            EntityUnitStatus status
+    ) {
+
         if (status == null) {
             return null;
         }
+
 
         return UnitStatusDTO.builder()
                 .id(status.getId())
@@ -1064,253 +1645,245 @@ public class HomeServiceImpl implements HomeServiceInterface {
 
 
     private LocationDTO toLocationDTO(EntityHomes home) {
+
+        OmanRegionEntity region = home.getRegion();
+        OmanWilayaEntity wilaya = home.getWilaya();
+        OmanAreaEntity area = home.getArea();
+
+
         return LocationDTO.builder()
-                .regionId(
-                        home.getRegion() != null
-                                ? home.getRegion().getId()
-                                : null
-                )
-                .regionNameEn(
-                        home.getRegion() != null
-                                ? home.getRegion().getNameEn()
-                                : null
-                )
-                .regionNameAr(
-                        home.getRegion() != null
-                                ? home.getRegion().getNameAr()
-                                : null
-                )
-                .wilayaId(
-                        home.getWilaya() != null
-                                ? home.getWilaya().getId()
-                                : null
-                )
-                .wilayaNameEn(
-                        home.getWilaya() != null
-                                ? home.getWilaya().getNameEn()
-                                : null
-                )
-                .wilayaNameAr(
-                        home.getWilaya() != null
-                                ? home.getWilaya().getNameAr()
-                                : null
-                )
-                .areaId(
-                        home.getArea() != null
-                                ? home.getArea().getId()
-                                : null
-                )
-                .areaNameEn(
-                        home.getArea() != null
-                                ? home.getArea().getNameEn()
-                                : null
-                )
-                .areaNameAr(
-                        home.getArea() != null
-                                ? home.getArea().getNameAr()
-                                : null
-                )
+
+                .regionId(idOf(region))
+                .regionNameEn(region != null ? region.getNameEn() : null)
+                .regionNameAr(region != null ? region.getNameAr() : null)
+                .wilayaId(idOf(wilaya))
+                .wilayaNameEn(wilaya != null ? wilaya.getNameEn() : null)
+                .wilayaNameAr(wilaya != null ? wilaya.getNameAr() : null)
+                .areaId(idOf(area))
+                .areaNameEn(area != null ? area.getNameEn() : null)
+                .areaNameAr(area != null ? area.getNameAr() : null)
                 .latitude(home.getLatitude())
                 .longitude(home.getLongitude())
                 .build();
     }
 
 
-    private void validateOwnership(
-            EntityHomes home,
-            Long authenticatedLandlordId
-    ) {
-        if (home.getLandlord() == null
-                || !authenticatedLandlordId.equals(
-                home.getLandlord().getId()
-        )) {
+    // =========================================================
+    // MEDIA
+    // =========================================================
 
-            throw new AccessDeniedException(
-                    "You are not allowed to access this home."
-            );
+    private void saveImages(Long homeId, List<MultipartFile> pictures) throws IOException {
+
+        if (pictures == null || pictures.isEmpty()) {
+            return;
+        }
+
+
+        propertyMediaService.saveImages(
+                pictures,
+                PropertyType.HOME,
+                homeId
+        );
+    }
+
+
+    private List<PropertyMediaDTO> getImages(Long homeId) {
+
+        List<PropertyMediaDTO> images = propertyMediaService.getImages(PropertyType.HOME, homeId);
+
+
+        return images == null ? List.of()
+                      : images;
+    }
+
+
+    private List<String> getPictureUrls(Long homeId) {
+
+        return getImages(homeId)
+                .stream()
+                .map(PropertyMediaDTO::getFileUrl)
+                .toList();
+    }
+
+
+    // =========================================================
+    // COMMON UTILITIES
+    // =========================================================
+
+    private boolean isFlatDividedIntoRooms(String code) {
+
+        String normalized = normalizeStatus(code);
+
+
+        return normalized != null && FLAT_DIVIDED_INTO_ROOMS.contains(normalized);
+    }
+
+
+    private String statusCode(EntityUnitStatus status) {
+
+        return status == null ? null
+                      : status.getCode();
+    }
+
+
+    private String normalizeStatus(String value) {
+
+        String cleaned = clean(value);
+
+
+        return cleaned == null ? null
+                        : cleaned.toUpperCase(
+                        Locale.ROOT
+        );
+    }
+
+
+    private String clean(String value) {
+
+        if (value == null) {
+            return null;
+        }
+
+
+        String cleaned = value.trim();
+
+
+        return cleaned.isEmpty()
+                ? null
+                : cleaned;
+    }
+
+
+    private String cleanRequired(String value, String message) {
+
+        String cleaned = clean(value);
+
+
+        if (cleaned == null) {
+
+            throw new FieldValidationException(message, Map.of("value", message));
+        }
+
+
+        return cleaned;
+    }
+
+
+    private void validateAuthenticatedLandlord(Long landlordId) {
+
+        if (landlordId == null || landlordId <= 0) {
+
+            throw new AccessDeniedException("Authenticated landlord id is required.");
         }
     }
 
 
-    private UnitStatusDTO convertStatusDTO(EntityUnitStatus status) {
+    private void validateId(Long id, String field) {
 
-        return UnitStatusDTO.builder()
-                .id(status.getId())
-                .code(status.getCode())
-                .nameEn(status.getNameEn())
-                .nameAr(status.getNameAr())
-                .colorCode(status.getColorCode())
-                .icon(status.getIcon())
-                .build();
+        if (id == null || id <= 0) {
+
+            throw fieldError(field, field + " is required and must be greater than zero.");
+        }
     }
 
-    private LocationDTO convertLocationDTO(EntityHomes home) {
 
-        return LocationDTO.builder()
-                .regionId(home.getRegion().getId())
-                .regionNameEn(home.getRegion().getNameEn())
-                .regionNameAr(home.getRegion().getNameAr())
-                .wilayaId(home.getWilaya().getId())
-                .wilayaNameEn(home.getWilaya().getNameEn())
-                .wilayaNameAr(home.getWilaya().getNameAr())
-                .areaId(home.getArea().getId())
-                .areaNameEn(home.getArea().getNameEn())
-                .areaNameAr(home.getArea().getNameAr())
-                .build();
+    private long zero(Long value) {
+
+        return value == null
+                ? 0L
+                : Math.max(
+                value,
+                0L
+        );
     }
 
-    private String getLandlordFullName(EntityUser landlord) {
+
+    private String landlordName(
+            EntityUser landlord
+    ) {
 
         if (landlord == null) {
             return null;
         }
 
+
+        String first =
+                clean(
+                        landlord.getFirstName()
+                );
+
+        String last =
+                clean(
+                        landlord.getLastName()
+                );
+
+
         return (
-                (landlord.getFirstName() == null
-                        ? ""
-                        : landlord.getFirstName())
+                (first == null ? "" : first)
                         + " "
-                        + (landlord.getLastName() == null
-                        ? ""
-                        : landlord.getLastName())
+                        + (last == null ? "" : last)
         ).trim();
     }
 
+
+    private FieldValidationException fieldError(String field, String message) {
+
+        return new FieldValidationException(message, Map.of(field, message));
+    }
+
+
+    private Long idOf(OmanRegionEntity entity) {
+
+        return entity == null
+                ? null
+                : entity.getId();
+    }
+
+
+    private Long idOf(OmanWilayaEntity entity) {
+
+        return entity == null
+                ? null
+                : entity.getId();
+    }
+
+
+    private Long idOf(OmanAreaEntity entity) {
+
+        return entity == null
+                ? null
+                : entity.getId();
+    }
+
+
+    // =========================================================
+    // SMALL INTERNAL RECORDS
+    // =========================================================
+
+    /**
+     * Same service class; no additional Java file is needed.
+     */
     private record LocationData(
             OmanRegionEntity region,
             OmanWilayaEntity wilaya,
             OmanAreaEntity area
-    ){}
+    ) {}
 
 
     /**
-     * Recalculates Home structure and aggregate status after direct Room or Flat changes.
-     * This method is intentionally idempotent and safe to call more than once in one transaction.
+     * Real rentable inventory snapshot.
      */
-    @Transactional
-    public void refreshHomeState(Long homeId) {
-        if (homeId == null || homeId <= 0) {
-            return;
+    private record HomeInventory(
+            long total,
+            long available,
+            long rented,
+            long directRooms,
+            long flats
+    ) {
+
+        boolean hasChildUnits() {
+
+            return directRooms > 0 || flats > 0;
         }
-
-        EntityHomes home = homeRepository.findByIdForUpdate(homeId).orElse(null);
-        if (home == null || home.isDeleted()) {
-            return;
-        }
-
-        long directRooms = roomRepository.countActiveDirectRoomsByHomeId(homeId, null);
-        long flats = flatsRepository.countByHomeIdAndActiveTrueAndDeletedFalse(homeId);
-
-        boolean hasChildUnits = directRooms > 0 || flats > 0;
-
-        // A child Flat or direct Room always upgrades the Home to multi-unit.
-        // Deleting the final child does not silently downgrade the landlord's selected model.
-        if (hasChildUnits && home.getRentalStructure() != HomeRentalStructure.MULTI_UNITS_HOME) {
-            home.setRentalStructure(HomeRentalStructure.MULTI_UNITS_HOME);
-        }
-
-        HomeRentalStructure structure = Optional.ofNullable(home.getRentalStructure())
-                .orElse(HomeRentalStructure.WHOLE_HOME);
-
-        String currentCode = statusCode(home.getStatus());
-        if (isHomeRefreshProtected(home.getStatus())) {
-            homeRepository.save(home);
-            return;
-        }
-
-        if (structure == HomeRentalStructure.WHOLE_HOME) {
-            if (isAutoManagedHomeStatus(currentCode)) {
-                home.setStatus(requiredHomeStatus("AVAILABLE"));
-            }
-            homeRepository.save(home);
-            return;
-        }
-
-        UnitStatusCountsProjection directRoomCounts =
-                roomRepository.getDirectHomeRoomStatusCounts(homeId);
-        UnitStatusCountsProjection flatCounts =
-                flatsRepository.getHomeFlatStatusCounts(homeId);
-
-        long total = safeCount(directRoomCounts == null ? null : directRoomCounts.getTotal())
-                + safeCount(flatCounts == null ? null : flatCounts.getTotal());
-        long available = safeCount(directRoomCounts == null ? null : directRoomCounts.getAvailable())
-                + safeCount(flatCounts == null ? null : flatCounts.getAvailable());
-        long rented = safeCount(directRoomCounts == null ? null : directRoomCounts.getRented())
-                + safeCount(flatCounts == null ? null : flatCounts.getRented());
-
-        // The Home entity itself represents the remaining Home offer while at least
-        // one declared direct Home room is not assigned as an independent Room.
-        if (home.getNumberOfRooms() != null && home.getNumberOfRooms() > directRooms) {
-            total++;
-            available++;
-        }
-
-        String targetCode;
-        if (total == 0 || available == total) {
-            targetCode = "AVAILABLE_AS_MULTI_UNITS";
-        } else if (rented == total) {
-            targetCode = "FULLY_RENTED_AS_MULTI_UNITS";
-        } else {
-            targetCode = "PARTIALLY_RENTED_AS_MULTI_UNITS";
-        }
-
-        home.setStatus(requiredHomeStatus(targetCode));
-        homeRepository.save(home);
     }
-
-    @Transactional(readOnly = true)
-    public HomeRentalStructure calculateHomeStructure(Long homeId) {
-        if (homeId == null || homeId <= 0) {
-            throw new IllegalArgumentException("Home id is required.");
-        }
-
-        long directRooms = roomRepository.countActiveDirectRoomsByHomeId(homeId, null);
-        long flats = flatsRepository.countByHomeIdAndActiveTrueAndDeletedFalse(homeId);
-
-        if (directRooms > 0 || flats > 0) {
-            return HomeRentalStructure.MULTI_UNITS_HOME;
-        }
-
-        EntityHomes home = homeRepository.findDetailsById(homeId);
-        return home == null || home.getRentalStructure() == null
-                ? HomeRentalStructure.WHOLE_HOME
-                : home.getRentalStructure();
-    }
-
-
-
-    @Transactional(readOnly = true)
-    public long calculateRemainingDirectRoomCapacity(EntityHomes home) {
-        if (home == null || home.getId() == null) {
-            return 0L;
-        }
-
-        long assigned = roomRepository.countActiveDirectRoomsByHomeId(home.getId(), null);
-        int declared = home.getNumberOfRooms() == null ? 0 : home.getNumberOfRooms();
-        return Math.max(0L, declared - assigned);
-    }
-
-    private boolean isProtectedHomeStatus(String code) {
-        if (code == null) return false;
-        String normalized = code.trim().toUpperCase(Locale.ROOT);
-        return Set.of("DRAFT", "INACTIVE", "BLOCKED", "UNDER_MAINTENANCE")
-                .contains(normalized);
-    }
-
-    private boolean isAutoManagedHomeStatus(String code) {
-        return code != null && AUTO_MANAGED_HOME_STATUSES
-                .contains(code.trim().toUpperCase(Locale.ROOT));
-    }
-
-    private EntityUnitStatus requiredHomeStatus(String code) {
-        return unitStatusService.getRequiredStatus(StatusDomain.HOME, code);
-    }
-
-
-    private long safeCount(Long value) {
-        return value == null ? 0L : Math.max(0L, value);
-    }
-
-
-
 }

@@ -6,7 +6,6 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
-import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusLevel;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.BusinessConflictException;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.FieldValidationException;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.*;
@@ -20,20 +19,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
 @RequiredArgsConstructor
-public class RoomsServicesImpl
-        implements RoomsServicesInterface {
+public class RoomsServicesImpl implements RoomsServicesInterface {
+
 
     private static final String AVAILABLE = "AVAILABLE";
-    private static final String RENTED = "RENTED";
-    private static final String RESERVED = "RESERVED";
     private static final String UNDER_MAINTENANCE = "UNDER_MAINTENANCE";
     private static final String BLOCKED = "BLOCKED";
+
     private static final String AVAILABLE_AS_ROOMS = "AVAILABLE_AS_ROOMS";
     private static final String PARTIALLY_RENTED_AS_ROOMS = "PARTIALLY_RENTED_AS_ROOMS";
     private static final String FULLY_RENTED_AS_ROOMS = "FULLY_RENTED_AS_ROOMS";
@@ -45,36 +42,47 @@ public class RoomsServicesImpl
 
     private final PropertyMediaService propertyMediaService;
     private final UnitStatusServiceInterface unitStatusService;
+
     private final FlatsServicesImpl flatsService;
     private final HomeServiceImpl homeService;
+
+
 
     @Override
     @Transactional
     public RoomDetailsDTO createRoom(
-            RoomSaveRequestDTO dto,
+            RoomCreateRequestDTO dto,
             List<MultipartFile> images,
             Long landlordId
     ) throws IOException {
 
-        validateCreateRoomRequest(dto, landlordId);
+        validateAuthenticatedLandlord(landlordId);
+
+
+        RoomParentType parentType = resolveParentType(dto.getBuildingId(), dto.getFlatId(), dto.getHomeId());
+
+        requireValidParent(parentType);
 
         EntityRooms room = new EntityRooms();
 
-        applyRoomFields(room, dto);
+        applyCreateFields(room, dto);
 
-        room.setStatus(resolveRoomStatus(dto.getStatusCode()));
+        room.setStatus(
+                resolveRoomStatus(dto.getStatusCode())
+        );
 
-        assignRequestedParent(room, dto, landlordId);
+        assignParent(
+                room,
+                parentType,
+                dto.getBuildingId(),
+                dto.getFlatId(),
+                dto.getHomeId(),
+                landlordId
+        );
 
         EntityRooms savedRoom = roomRepository.saveAndFlush(room);
 
-        if (images != null && !images.isEmpty()) {
-            propertyMediaService.saveImages(
-                    images,
-                    PropertyType.ROOM,
-                    savedRoom.getId()
-            );
-        }
+        saveRoomImages(savedRoom.getId(), images);
 
         refreshAffectedParents(
                 null,
@@ -83,51 +91,102 @@ public class RoomsServicesImpl
                 resolveHomeId(savedRoom)
         );
 
-        return toDTO(getRoom(savedRoom.getId()));
+        return toDTO(savedRoom);
     }
+
+
+    // =========================================================
+    // UPDATE
+    // =========================================================
 
     @Override
     @Transactional
     public RoomDetailsDTO updateRoom(
             Long roomId,
-            RoomSaveRequestDTO dto,
+            RoomUpdateRequestDTO dto,
             List<MultipartFile> newImages,
             List<Long> imageIdsToDelete,
             Long landlordId
     ) throws IOException {
 
         validateId(roomId, "roomId");
+        validateAuthenticatedLandlord(landlordId);
 
         if (dto == null) {
-            throw fieldError("data", "Room request is required.");
+            throw fieldError(
+                    "data",
+                    "Room request is required."
+            );
         }
-
-        validateAuthenticatedLandlord(landlordId);
 
         EntityRooms room = getRoom(roomId);
 
         validateRoomOwnerAccess(room, landlordId);
 
-        validateUpdateRoomRequest(dto);
-
+        /*
+         * Save previous parents because Room may be moved.
+         */
         Long oldFlatId = idOf(room.getFlat());
         Long oldHomeId = resolveHomeId(room);
 
-        applyRoomFields(room, dto);
+        /*
+         * Only submitted fields are changed.
+         */
+        applyUpdateFields(room, dto);
 
-        if (!isBlank(dto.getStatusCode())) {
-            room.setStatus(resolveRoomStatus(dto.getStatusCode()));
+        /*
+         * Status is optional during update.
+         *
+         * If provided, it must still be a valid setup-level Room status.
+         */
+        if (dto.getStatusCode() != null) {
+            room.setStatus(
+                    resolveRoomStatus(dto.getStatusCode())
+            );
         }
 
-        if (hasAnyParentField(dto)) {
+        RoomParentType requestedParentType = resolveParentType(
+                dto.getBuildingId(),
+                dto.getFlatId(),
+                dto.getHomeId()
+        );
 
-            validateParentFieldsOrThrow(dto);
+        if (requestedParentType == RoomParentType.INVALID) {
+            throw invalidParentException();
+        }
 
-            room.setBuilding(null);
-            room.setFlat(null);
-            room.setHome(null);
+        /*
+         * NONE on update means:
+         *
+         * "Do not change the current parent."
+         *
+         * Any other valid combination means the caller wants to assign/move
+         * the Room to that parent.
+         */
+        if (requestedParentType != RoomParentType.NONE) {
 
-            assignRequestedParent(room, dto, landlordId);
+            assignParent(
+                    room,
+                    requestedParentType,
+                    dto.getBuildingId(),
+                    dto.getFlatId(),
+                    dto.getHomeId(),
+                    landlordId
+            );
+
+        } else if (dto.getRoomNumber() != null) {
+
+            /*
+             * IMPORTANT:
+             *
+             * Parent did not change, but Room number changed.
+             *
+             * We must still check duplicate Room numbers against the current
+             * Building / Flat / Home.
+             *
+             * The old implementation missed this scenario.
+             */
+            validateRoomNumberAgainstCurrentParent(room);
         }
 
         EntityRooms savedRoom = roomRepository.saveAndFlush(room);
@@ -146,25 +205,39 @@ public class RoomsServicesImpl
                 resolveHomeId(savedRoom)
         );
 
-        return toDTO(getRoom(savedRoom.getId()));
+        return toDTO(savedRoom);
     }
+
+
+    // =========================================================
+    // GET
+    // =========================================================
 
     @Override
     public RoomDetailsDTO getRoomById(Long roomId) {
+
         validateId(roomId, "roomId");
-        return toDTO(getRoom(roomId));
+
+        return toDTO(
+                getRoom(roomId)
+        );
     }
+
 
     @Override
     public List<RoomDetailsDTO> getAllRooms() {
-        return roomRepository.findAllDetails()
+
+        return roomRepository
+                .findAllDetails()
                 .stream()
                 .map(this::toDTO)
                 .toList();
     }
 
+
     @Override
     public List<RoomDetailsDTO> getRoomsByBuildingId(Long buildingId) {
+
         validateId(buildingId, "buildingId");
 
         return roomRepository
@@ -174,8 +247,10 @@ public class RoomsServicesImpl
                 .toList();
     }
 
+
     @Override
     public List<RoomDetailsDTO> getRoomsByFlatId(Long flatId) {
+
         validateId(flatId, "flatId");
 
         return roomRepository
@@ -185,8 +260,10 @@ public class RoomsServicesImpl
                 .toList();
     }
 
+
     @Override
     public List<RoomDetailsDTO> getRoomsByHomeId(Long homeId) {
+
         validateId(homeId, "homeId");
 
         return roomRepository
@@ -196,6 +273,11 @@ public class RoomsServicesImpl
                 .toList();
     }
 
+
+    // =========================================================
+    // DELETE
+    // =========================================================
+
     @Override
     @Transactional
     public void deleteRoom(Long roomId) {
@@ -203,10 +285,14 @@ public class RoomsServicesImpl
         validateId(roomId, "roomId");
 
         EntityRooms room = getRoom(roomId);
+
         Long oldFlatId = idOf(room.getFlat());
         Long oldHomeId = resolveHomeId(room);
 
-        propertyMediaService.softDeleteAllImages(PropertyType.ROOM, room.getId());
+        propertyMediaService.softDeleteAllImages(
+                PropertyType.ROOM,
+                room.getId()
+        );
 
         room.setDeleted(true);
         room.setActive(false);
@@ -214,251 +300,468 @@ public class RoomsServicesImpl
 
         roomRepository.saveAndFlush(room);
 
+        /*
+         * A deleted Room may change its Flat/Home derived status.
+         */
         refreshAffectedParents(
-                oldFlatId, null, oldHomeId, null
+                oldFlatId,
+                null,
+                oldHomeId,
+                null
         );
     }
 
-    private void assignRequestedParent(EntityRooms room, RoomSaveRequestDTO dto, Long landlordId) {
 
-        if (isDirectBuildingRoom(dto)) {
-            assignDirectBuildingRoom(room, dto.getBuildingId(), landlordId);
-            return;
+    // =========================================================
+    // PARENT TYPE
+    // =========================================================
+
+    /**
+     * Converts the three nullable parent IDs into one clear RoomParentType.
+     *
+     * Supported:
+     *
+     * building only              -> DIRECT_BUILDING
+     * building + flat            -> BUILDING_FLAT
+     * home only                  -> DIRECT_HOME
+     * home + flat                -> HOME_FLAT
+     *
+     * none                       -> NONE
+     *
+     * everything else           -> INVALID
+     */
+    private RoomParentType resolveParentType(
+            Long buildingId,
+            Long flatId,
+            Long homeId
+    ) {
+
+        boolean hasBuilding = buildingId != null;
+        boolean hasFlat = flatId != null;
+        boolean hasHome = homeId != null;
+
+        if (!hasBuilding && !hasFlat && !hasHome) {
+            return RoomParentType.NONE;
         }
 
-        if (isBuildingFlatRoom(dto)) {
-            assignBuildingFlatRoom(room, dto.getBuildingId(), dto.getFlatId(), landlordId);
-            return;
+        if (hasBuilding && !hasFlat && !hasHome) {
+            return RoomParentType.DIRECT_BUILDING;
         }
 
-        if (isDirectHomeRoom(dto)) {
-            assignDirectHomeRoom(room, dto.getHomeId(), landlordId);
-            return;
+        if (hasBuilding && hasFlat && !hasHome) {
+            return RoomParentType.BUILDING_FLAT;
         }
 
-        if (isHomeFlatRoom(dto)) {
-            assignHomeFlatRoom(room, dto.getHomeId(), dto.getFlatId(), landlordId);
-            return;
+        if (!hasBuilding && !hasFlat && hasHome) {
+            return RoomParentType.DIRECT_HOME;
         }
 
-        throw fieldError("parent", "Unsupported room parent combination.");
+        if (!hasBuilding && hasFlat && hasHome) {
+            return RoomParentType.HOME_FLAT;
+        }
+
+        return RoomParentType.INVALID;
     }
 
-    private void assignDirectBuildingRoom(
+
+
+    private void requireValidParent(RoomParentType parentType) {
+
+        if (parentType == RoomParentType.NONE || parentType == RoomParentType.INVALID) {
+
+            throw invalidParentException();
+        }
+    }
+
+
+    private FieldValidationException invalidParentException() {
+
+        return fieldError("parent", "Room must belong directly to a building, " + "a building flat, a home directly, or a home flat.");
+    }
+
+
+    // =========================================================
+    // ASSIGN PARENT
+    // =========================================================
+
+    /**
+     * Central method for assigning/moving a Room.
+     *
+     * This replaces:
+     *
+     * assignDirectBuildingRoom()
+     * assignBuildingFlatRoom()
+     * assignDirectHomeRoom()
+     * assignHomeFlatRoom()
+     *
+     * All ownership, capacity, status and duplicate checks happen here.
+     */
+    private void assignParent(
             EntityRooms room,
+            RoomParentType parentType,
             Long buildingId,
+            Long flatId,
+            Long homeId,
             Long landlordId
     ) {
 
-        EntityBuildings building =
-                getBuilding(buildingId);
+        String roomNumber = cleanRoomNumber(room.getRoomNumber());
 
-        validateBuildingOwnership(
-                building,
-                landlordId
-        );
+        switch (parentType) {
 
-        validateBuildingAcceptsRooms(building);
+            // -------------------------------------------------
+            // DIRECT BUILDING
+            // -------------------------------------------------
 
-        String roomNumber =
-                cleanRoomNumber(room.getRoomNumber());
+            case DIRECT_BUILDING -> {
 
-        validateDirectBuildingRoomNumber(
-                building.getId(),
-                roomNumber,
-                room.getId()
-        );
+                EntityBuildings building =
+                        getBuilding(buildingId);
+
+                validateBuildingOwnership(
+                        building,
+                        landlordId
+                );
+
+                validateBuildingAcceptsRooms(building);
+
+                validateRoomNumberUnique(
+                        room,
+                        RoomParentType.DIRECT_BUILDING,
+                        building.getId(),
+                        null,
+                        null,
+                        roomNumber
+                );
+
+                setParent(
+                        room,
+                        building,
+                        null,
+                        null
+                );
+            }
+
+
+            // -------------------------------------------------
+            // BUILDING -> FLAT -> ROOM
+            // -------------------------------------------------
+
+            case BUILDING_FLAT -> {
+
+                EntityBuildings building =
+                        getBuilding(buildingId);
+
+                EntityFlats flat =
+                        getFlat(flatId);
+
+                validateBuildingOwnership(
+                        building,
+                        landlordId
+                );
+
+                validateFlatOwnership(
+                        flat,
+                        landlordId
+                );
+
+                validateFlatBelongsToBuilding(
+                        flat,
+                        building
+                );
+
+                validateFlatCanBeUsedAsRooms(flat);
+
+                validateFlatRoomCapacity(
+                        flat,
+                        room.getId()
+                );
+
+                validateRoomNumberUnique(
+                        room,
+                        RoomParentType.BUILDING_FLAT,
+                        null,
+                        flat.getId(),
+                        null,
+                        roomNumber
+                );
+
+                setParent(
+                        room,
+                        building,
+                        flat,
+                        null
+                );
+            }
+
+
+            // -------------------------------------------------
+            // DIRECT HOME
+            // -------------------------------------------------
+
+            case DIRECT_HOME -> {
+
+                EntityHomes home =
+                        getHome(homeId);
+
+                validateHomeOwnership(
+                        home,
+                        landlordId
+                );
+
+                validateHomeAcceptsRooms(home);
+
+                validateHomeDirectRoomCapacity(
+                        home,
+                        room.getId()
+                );
+
+                validateRoomNumberUnique(
+                        room,
+                        RoomParentType.DIRECT_HOME,
+                        null,
+                        null,
+                        home.getId(),
+                        roomNumber
+                );
+
+                setParent(
+                        room,
+                        null,
+                        null,
+                        home
+                );
+            }
+
+
+            // -------------------------------------------------
+            // HOME -> FLAT -> ROOM
+            // -------------------------------------------------
+
+            case HOME_FLAT -> {
+
+                EntityHomes home =
+                        getHome(homeId);
+
+                EntityFlats flat =
+                        getFlat(flatId);
+
+                validateHomeOwnership(
+                        home,
+                        landlordId
+                );
+
+                validateFlatOwnership(
+                        flat,
+                        landlordId
+                );
+
+                validateFlatBelongsToHome(
+                        flat,
+                        home
+                );
+
+                validateFlatCanBeUsedAsRooms(flat);
+
+                validateFlatRoomCapacity(
+                        flat,
+                        room.getId()
+                );
+
+                validateRoomNumberUnique(
+                        room,
+                        RoomParentType.HOME_FLAT,
+                        null,
+                        flat.getId(),
+                        null,
+                        roomNumber
+                );
+
+                setParent(
+                        room,
+                        null,
+                        flat,
+                        home
+                );
+            }
+
+
+            default ->
+                    throw invalidParentException();
+        }
 
         room.setRoomNumber(roomNumber);
-        room.setBuilding(building);
-        room.setFlat(null);
-        room.setHome(null);
 
         activateRoom(room);
     }
 
-    private void assignBuildingFlatRoom(
+
+    /**
+     * Setting all three references together is important.
+     *
+     * It automatically clears the previous parent when moving a Room.
+     */
+    private void setParent(
             EntityRooms room,
-            Long buildingId,
-            Long flatId,
-            Long landlordId
+            EntityBuildings building,
+            EntityFlats flat,
+            EntityHomes home
     ) {
 
-        EntityBuildings building =
-                getBuilding(buildingId);
+        room.setBuilding(building);
+        room.setFlat(flat);
+        room.setHome(home);
+    }
 
-        EntityFlats flat =
-                getFlat(flatId);
 
-        validateBuildingOwnership(
-                building,
-                landlordId
-        );
+    // =========================================================
+    // PARENT RELATIONSHIP VALIDATION
+    // =========================================================
 
-        validateFlatOwnership(
-                flat,
-                landlordId
-        );
+    private void validateFlatBelongsToBuilding(
+            EntityFlats flat,
+            EntityBuildings building
+    ) {
 
         if (flat.getBuilding() == null
                 || !Objects.equals(
                 flat.getBuilding().getId(),
                 building.getId()
         )) {
+
             throw fieldError(
                     "flatId",
                     "Selected flat does not belong to the selected building."
             );
         }
-
-        validateFlatCanBeUsedAsRooms(flat);
-
-        validateFlatRoomCapacity(
-                flat,
-                room.getId()
-        );
-
-        String roomNumber =
-                cleanRoomNumber(room.getRoomNumber());
-
-        validateFlatRoomNumber(
-                flat.getId(),
-                roomNumber,
-                room.getId()
-        );
-
-        room.setRoomNumber(roomNumber);
-        room.setBuilding(building);
-        room.setFlat(flat);
-        room.setHome(null);
-
-        activateRoom(room);
     }
 
-    private void assignDirectHomeRoom(
-            EntityRooms room,
-            Long homeId,
-            Long landlordId
+
+    private void validateFlatBelongsToHome(
+            EntityFlats flat,
+            EntityHomes home
     ) {
-
-        EntityHomes home = getHome(homeId);
-
-        validateHomeOwnership(home, landlordId);
-
-        validateHomeAcceptsAnnexRooms(home); //if home now rented as whole home or reserved or blocked
-
-        validateHomeDirectRoomCapacity(home, room.getId());// to check if there is room free in this home to rent it.
-
-        String roomNumber = cleanRoomNumber(room.getRoomNumber()); //generate room number with home arrangement code number
-
-        validateDirectHomeRoomNumber(home.getId(), roomNumber, room.getId()); //to check if there is room has same room number as adding now to prevent duplicate room numbers
-
-        room.setRoomNumber(roomNumber);
-        room.setBuilding(null);
-        room.setFlat(null);
-        room.setHome(home);
-
-        activateRoom(room);
-    }
-
-    private void assignHomeFlatRoom(
-            EntityRooms room,
-            Long homeId,
-            Long flatId,
-            Long landlordId
-    ) {
-
-        EntityHomes home = getHome(homeId);
-        EntityFlats flat = getFlat(flatId);
-
-        validateHomeOwnership(
-                home,
-                landlordId
-        );
-
-        validateFlatOwnership(
-                flat,
-                landlordId
-        );
 
         if (flat.getHome() == null
                 || !Objects.equals(
                 flat.getHome().getId(),
                 home.getId()
         )) {
+
             throw fieldError(
                     "flatId",
                     "Selected flat does not belong to the selected home."
             );
         }
-
-        validateFlatCanBeUsedAsRooms(flat);
-
-        validateFlatRoomCapacity(
-                flat,
-                room.getId()
-        );
-
-        String roomNumber =
-                cleanRoomNumber(room.getRoomNumber());
-
-        validateFlatRoomNumber(
-                flat.getId(),
-                roomNumber,
-                room.getId()
-        );
-
-        room.setRoomNumber(roomNumber);
-        room.setBuilding(null);
-        room.setFlat(flat);
-        room.setHome(home);
-
-        activateRoom(room);
     }
 
+
+    // =========================================================
+    // CAPACITY VALIDATION
+    // =========================================================
+
+    /**
+     * Flat numberOfRooms determines the maximum number of active Room
+     * entities that may be created from that Flat.
+     */
     private void validateFlatRoomCapacity(
             EntityFlats flat,
             Long currentRoomId
     ) {
-        int allowedRooms = Optional.ofNullable(flat.getNumberOfRooms()).orElse(0);
+
+        int allowedRooms =
+                Optional.ofNullable(flat.getNumberOfRooms())
+                        .orElse(0);
+
         if (allowedRooms <= 0) {
-            throw new BusinessConflictException("Flat does not have a valid room capacity.");
+
+            throw new BusinessConflictException(
+                    "Flat does not have a valid room capacity."
+            );
         }
 
-        long usedRooms = roomRepository.countActiveRoomsByFlatId(flat.getId(), currentRoomId);
+        /*
+         * currentRoomId is excluded by repository logic during update.
+         */
+        long usedRooms =
+                roomRepository.countActiveRoomsByFlatId(
+                        flat.getId(),
+                        currentRoomId
+                );
+
         if (usedRooms >= allowedRooms) {
+
             throw new BusinessConflictException(
-                    "Cannot add another room. Flat " + flat.getFlatNumber()
-                            + " allows only " + allowedRooms + " room(s)."
+                    "Cannot add another room. Flat "
+                            + flat.getFlatNumber()
+                            + " allows only "
+                            + allowedRooms
+                            + " room(s)."
             );
         }
     }
 
+
+    /**
+     * Direct Rooms of a Home must not exceed Home.numberOfRooms.
+     */
     private void validateHomeDirectRoomCapacity(
             EntityHomes home,
             Long currentRoomId
     ) {
-        int allowedRooms = Optional.ofNullable(home.getNumberOfRooms()).orElse(0);
+
+        int allowedRooms =
+                Optional.ofNullable(home.getNumberOfRooms())
+                        .orElse(0);
+
         if (allowedRooms <= 0) {
-            throw new BusinessConflictException("Home does not have a valid direct-room capacity.");
+
+            throw new BusinessConflictException(
+                    "Home does not have a valid direct-room capacity."
+            );
         }
 
-        long usedRooms = roomRepository.countActiveDirectRoomsByHomeId(home.getId(), currentRoomId);
+        long usedRooms =
+                roomRepository.countActiveDirectRoomsByHomeId(
+                        home.getId(),
+                        currentRoomId
+                );
+
         if (usedRooms >= allowedRooms) {
+
             throw new BusinessConflictException(
-                    "Cannot add another direct room. " + usedRooms + " of "
-                            + allowedRooms + " direct Home room(s) are already assigned."
+                    "Cannot add another direct room. "
+                            + usedRooms
+                            + " of "
+                            + allowedRooms
+                            + " direct Home room(s) are already assigned."
             );
         }
     }
 
-    private void validateFlatCanBeUsedAsRooms(
-            EntityFlats flat
-    ) {
 
-        String code = statusCode(flat.getStatus());
+    // =========================================================
+    // PARENT STATUS BUSINESS VALIDATION
+    // =========================================================
+
+    /**
+     * A Flat can contain independently managed Rooms while:
+     *
+     * AVAILABLE
+     * AVAILABLE_AS_ROOMS
+     * PARTIALLY_RENTED_AS_ROOMS
+     * FULLY_RENTED_AS_ROOMS
+     *
+     * Capacity validation will still prevent creating additional Rooms
+     * when the configured numberOfRooms has already been reached.
+     */
+    private void validateFlatCanBeUsedAsRooms(EntityFlats flat) {
+
+        String code =
+                statusCode(flat.getStatus());
 
         if (code == null) {
+
             throw new BusinessConflictException(
                     "Flat status is missing."
             );
@@ -468,6 +771,7 @@ public class RoomsServicesImpl
                 || AVAILABLE_AS_ROOMS.equalsIgnoreCase(code)
                 || PARTIALLY_RENTED_AS_ROOMS.equalsIgnoreCase(code)
                 || FULLY_RENTED_AS_ROOMS.equalsIgnoreCase(code)) {
+
             return;
         }
 
@@ -478,6 +782,10 @@ public class RoomsServicesImpl
         );
     }
 
+
+    /**
+     * Building can receive Rooms unless its operational state prevents it.
+     */
     private void validateBuildingAcceptsRooms(
             EntityBuildings building
     ) {
@@ -487,6 +795,7 @@ public class RoomsServicesImpl
 
         if (UNDER_MAINTENANCE.equalsIgnoreCase(code)
                 || BLOCKED.equalsIgnoreCase(code)) {
+
             throw new BusinessConflictException(
                     "Cannot add a room because building status is "
                             + code
@@ -495,500 +804,325 @@ public class RoomsServicesImpl
         }
     }
 
-    /*
-     * AVAILABLE, RENTED and RESERVED are accepted.
+
+    /**
+     * AVAILABLE, RENTED and RESERVED Home scenarios are allowed.
      *
-     * A whole home may be rented while annex rooms are rented
-     * independently.
+     * A Home can therefore contain independently managed Rooms even when
+     * its own whole-home rental state is RENTED/RESERVED, according to the
+     * current business rule.
+     *
+     * Only states that make the property unusable prevent Room operations.
      */
-    private void validateHomeAcceptsAnnexRooms(
+    private void validateHomeAcceptsRooms(
             EntityHomes home
     ) {
 
-        String code = statusCode(home.getStatus());
+        String code =
+                statusCode(home.getStatus());
 
-        if (UNDER_MAINTENANCE.equalsIgnoreCase(code) || BLOCKED.equalsIgnoreCase(code)) {
-            throw new BusinessConflictException("Cannot add an annex room because home status is " + code + ".");
+        if (UNDER_MAINTENANCE.equalsIgnoreCase(code)
+                || BLOCKED.equalsIgnoreCase(code)) {
+
+            throw new BusinessConflictException(
+                    "Cannot add a room because home status is "
+                            + code
+                            + "."
+            );
         }
     }
 
-    private void refreshFlatAfterRoomChange(
-            EntityFlats oldFlat,
-            EntityFlats newFlat
+
+    // =========================================================
+    // ROOM NUMBER UNIQUENESS
+    // =========================================================
+
+    /**
+     * One duplicate validator replaces three almost identical methods.
+     *
+     * Uniqueness scope:
+     *
+     * DIRECT_BUILDING -> within direct Rooms of that Building
+     *
+     * DIRECT_HOME     -> within direct Rooms of that Home
+     *
+     * BUILDING_FLAT /
+     * HOME_FLAT       -> within that Flat
+     */
+    private void validateRoomNumberUnique(
+            EntityRooms room,
+            RoomParentType parentType,
+            Long buildingId,
+            Long flatId,
+            Long homeId,
+            String roomNumber
     ) {
 
-        if (oldFlat != null) {
-            refreshFlatStatus(oldFlat);
+        boolean exists;
+
+        switch (parentType) {
+
+            case DIRECT_BUILDING ->
+
+                    exists = roomRepository
+                            .existsByBuildingIdAndFlatIsNullAndHomeIsNullAndRoomNumberIgnoreCaseAndDeletedFalse(
+                                    buildingId,
+                                    roomNumber
+                            );
+
+
+            case DIRECT_HOME ->
+
+                    exists = roomRepository
+                            .existsByHomeIdAndFlatIsNullAndBuildingIsNullAndRoomNumberIgnoreCaseAndDeletedFalse(
+                                    homeId,
+                                    roomNumber
+                            );
+
+
+            case BUILDING_FLAT, HOME_FLAT ->
+
+                    exists = roomRepository
+                            .existsByFlatIdAndRoomNumberIgnoreCaseAndDeletedFalse(
+                                    flatId,
+                                    roomNumber
+                            );
+
+
+            default ->
+                    throw invalidParentException();
         }
 
-        if (newFlat != null
-                && (
-                oldFlat == null
-                        || !Objects.equals(
-                        oldFlat.getId(),
-                        newFlat.getId()
-                )
+        if (!exists) {
+            return;
+        }
+
+        /*
+         * During UPDATE, repository exists(...) also sees the current Room.
+         *
+         * Therefore, allow the result only when the matching record is
+         * actually this same Room in the same parent scope.
+         *
+         * During CREATE room.getId() == null, so duplicate always fails.
+         */
+        if (isSameExistingRoom(
+                room,
+                parentType,
+                buildingId,
+                flatId,
+                homeId,
+                roomNumber
         )) {
-            refreshFlatStatus(newFlat);
-        }
-    }
-
-    private void refreshFlatStatus(
-            EntityFlats flat
-    ) {
-
-        if (flat == null || flat.isDeleted()) {
             return;
         }
 
-        List<EntityRooms> activeRooms =
-                roomRepository
-                        .findDetailsByFlatId(flat.getId())
-                        .stream()
-                        .filter(EntityRooms::isActive)
-                        .filter(room -> !room.isDeleted())
-                        .toList();
+        String location = switch (parentType) {
 
-        if (activeRooms.isEmpty()) {
+            case DIRECT_BUILDING ->
+                    "directly in this building";
 
-            if (isDerivedRoomStatus(statusCode(flat.getStatus()))) {
-                flat.setStatus(requiredStatus(StatusDomain.FLAT, AVAILABLE));
+            case DIRECT_HOME ->
+                    "directly in this home";
 
-                flatsRepository.save(flat);
-            }
+            case BUILDING_FLAT, HOME_FLAT ->
+                    "in this flat";
 
-            return;
-        }
+            default ->
+                    "in this parent";
+        };
 
-        long rented = countByStatus(activeRooms, RENTED);
-
-        long nonAvailable =
-                rented
-                        + countByStatus(activeRooms, RESERVED)
-                        + countByStatus(activeRooms, UNDER_MAINTENANCE)
-                        + countByStatus(activeRooms, BLOCKED);
-
-        String newStatusCode;
-
-        if (rented == activeRooms.size()) {
-
-            newStatusCode = FULLY_RENTED_AS_ROOMS;
-
-        } else if (nonAvailable > 0) {
-
-            newStatusCode = PARTIALLY_RENTED_AS_ROOMS;
-
-        } else {
-
-            newStatusCode = AVAILABLE_AS_ROOMS;
-        }
-
-        flat.setStatus(requiredStatus(StatusDomain.FLAT, newStatusCode));
-
-        flatsRepository.save(flat);
-    }
-
-    private void applyRoomFields(EntityRooms room, RoomSaveRequestDTO dto) {
-
-        if (dto.getRoomNumber() != null) {
-            room.setRoomNumber(
-                    cleanRequired(
-                            dto.getRoomNumber(),
-                            "Room number is required."
-                    )
-            );
-        }
-
-        if (dto.getSize() != null) {
-            room.setSize(clean(dto.getSize()));
-        }
-
-        if (dto.getTenantType() != null) {
-            room.setTenantType(
-                    clean(dto.getTenantType())
-            );
-        }
-
-        if (dto.getRentTimeType() != null) {
-            room.setRentTimeType(
-                    clean(dto.getRentTimeType())
-            );
-        }
-
-        if (dto.getPrice() != null) {
-
-            if (dto.getPrice()
-                    .compareTo(BigDecimal.ZERO) < 0) {
-                throw fieldError(
-                        "price",
-                        "Room price cannot be negative."
-                );
-            }
-
-            room.setPrice(dto.getPrice());
-        }
-
-        if (dto.getHasPrivateBathroom() != null) {
-            room.setHasPrivateBathroom(
-                    Boolean.TRUE.equals(
-                            dto.getHasPrivateBathroom()
-                    )
-            );
-        }
-
-        if (dto.getHasAC() != null) {
-            room.setHasAC(
-                    Boolean.TRUE.equals(dto.getHasAC())
-            );
-        }
-
-        if (dto.getHasWIFI() != null) {
-            room.setHasWIFI(
-                    Boolean.TRUE.equals(dto.getHasWIFI())
-            );
-        }
-
-        if (dto.getIsFurnished() != null) {
-            room.setFurnished(
-                    Boolean.TRUE.equals(
-                            dto.getIsFurnished()
-                    )
-            );
-        }
-
-        if (dto.getKitchen() != null) {
-            room.setKitchen(clean(dto.getKitchen()));
-        }
-
-        if (dto.getDescription() != null) {
-            room.setDescription(
-                    clean(dto.getDescription())
-            );
-        }
-    }
-
-    private void validateCreateRoomRequest(
-            RoomSaveRequestDTO dto,
-            Long landlordId
-    ) {
-
-        if (dto == null) {
-            throw fieldError("data", "Room request is required.");
-        }
-
-        Map<String, String> errors = new LinkedHashMap<>();
-
-        if (landlordId == null || landlordId <= 0) {
-            errors.put("landlordId", "Authenticated landlord id is invalid.");
-        }
-
-        required(errors, "roomNumber", dto.getRoomNumber());
-
-        required(errors, "size", dto.getSize());
-
-        required(errors, "statusCode", dto.getStatusCode());
-
-        required(errors, "tenantType", dto.getTenantType());
-
-        required(errors, "rentTimeType", dto.getRentTimeType());
-
-        required(errors, "kitchen", dto.getKitchen());
-
-        if (dto.getPrice() == null) {
-            errors.put("price", "Room price is required.");
-        } else if (dto.getPrice().compareTo(BigDecimal.ZERO) < 0) {
-            errors.put("price", "Room price cannot be negative.");
-        }
-
-        validateParentFields(dto, errors);
-
-        if (!errors.isEmpty()) {
-            throw new FieldValidationException("Please complete all required room fields correctly.", errors);
-        }
-    }
-
-    private void validateUpdateRoomRequest(
-            RoomSaveRequestDTO dto
-    ) {
-
-        Map<String, String> errors =
-                new LinkedHashMap<>();
-
-        if (dto.getRoomNumber() != null
-                && isBlank(dto.getRoomNumber())) {
-            errors.put(
-                    "roomNumber",
-                    "Room number cannot be empty."
-            );
-        }
-
-        if (dto.getPrice() != null
-                && dto.getPrice()
-                .compareTo(BigDecimal.ZERO) < 0) {
-            errors.put(
-                    "price",
-                    "Room price cannot be negative."
-            );
-        }
-
-        if (hasAnyParentField(dto)) {
-            validateParentFields(dto, errors);
-        }
-
-        if (!errors.isEmpty()) {
-            throw new FieldValidationException(
-                    "Please correct the room fields.",
-                    errors
-            );
-        }
-    }
-
-    private void validateParentFieldsOrThrow(
-            RoomSaveRequestDTO dto
-    ) {
-
-        Map<String, String> errors =
-                new LinkedHashMap<>();
-
-        validateParentFields(dto, errors);
-
-        if (!errors.isEmpty()) {
-            throw new FieldValidationException(
-                    "Room parent is invalid.",
-                    errors
-            );
-        }
-    }
-
-    private void validateParentFields(
-            RoomSaveRequestDTO dto,
-            Map<String, String> errors
-    ) {
-
-        if (isValidParentRequest(dto)) {
-            return;
-        }
-
-        errors.put(
-                "parent",
-                "Room must belong to a building directly, " +
-                        "a building flat, a home directly, " +
-                        "or a home flat."
+        throw fieldError(
+                "roomNumber",
+                "Room number already exists "
+                        + location
+                        + "."
         );
     }
 
-    private boolean isValidParentRequest(
-            RoomSaveRequestDTO dto
-    ) {
-        return isDirectBuildingRoom(dto)
-                || isBuildingFlatRoom(dto)
-                || isDirectHomeRoom(dto)
-                || isHomeFlatRoom(dto);
-    }
 
-    private boolean isDirectBuildingRoom(
-            RoomSaveRequestDTO dto
-    ) {
-        return dto.getBuildingId() != null
-                && dto.getFlatId() == null
-                && dto.getHomeId() == null;
-    }
-
-    private boolean isBuildingFlatRoom(
-            RoomSaveRequestDTO dto
-    ) {
-        return dto.getBuildingId() != null
-                && dto.getFlatId() != null
-                && dto.getHomeId() == null;
-    }
-
-    private boolean isDirectHomeRoom(
-            RoomSaveRequestDTO dto
-    ) {
-        return dto.getBuildingId() == null
-                && dto.getFlatId() == null
-                && dto.getHomeId() != null;
-    }
-
-    private boolean isHomeFlatRoom(
-            RoomSaveRequestDTO dto
-    ) {
-        return dto.getBuildingId() == null
-                && dto.getFlatId() != null
-                && dto.getHomeId() != null;
-    }
-
-    private boolean hasAnyParentField(
-            RoomSaveRequestDTO dto
-    ) {
-        return dto.getBuildingId() != null
-                || dto.getFlatId() != null
-                || dto.getHomeId() != null;
-    }
-
-    private void validateDirectBuildingRoomNumber(
+    /**
+     * Determines whether exists(...) found the current Room itself.
+     */
+    private boolean isSameExistingRoom(
+            EntityRooms room,
+            RoomParentType parentType,
             Long buildingId,
-            String roomNumber,
-            Long currentRoomId
-    ) {
-
-        boolean exists =
-                roomRepository
-                        .existsByBuildingIdAndFlatIsNullAndHomeIsNullAndRoomNumberIgnoreCaseAndDeletedFalse(
-                                buildingId,
-                                roomNumber
-                        );
-
-        if (!exists) {
-            return;
-        }
-
-        EntityRooms current =
-                currentRoomId == null
-                        ? null
-                        : roomRepository
-                        .findDetailsById(currentRoomId);
-
-        boolean sameRoom =
-                current != null
-                        && current.getBuilding() != null
-                        && current.getFlat() == null
-                        && current.getHome() == null
-                        && Objects.equals(
-                        current.getBuilding().getId(),
-                        buildingId
-                )
-                        && roomNumber.equalsIgnoreCase(
-                        current.getRoomNumber()
-                );
-
-        if (!sameRoom) {
-            throw fieldError(
-                    "roomNumber",
-                    "Room number already exists directly in this building."
-            );
-        }
-    }
-
-    private void validateDirectHomeRoomNumber(
-            Long homeId,
-            String roomNumber,
-            Long currentRoomId
-    ) {
-
-        boolean exists =
-                roomRepository
-                        .existsByHomeIdAndFlatIsNullAndBuildingIsNullAndRoomNumberIgnoreCaseAndDeletedFalse(
-                                homeId,
-                                roomNumber
-                        );
-
-        if (!exists) {
-            return;
-        }
-
-        EntityRooms current =
-                currentRoomId == null
-                        ? null
-                        : roomRepository
-                        .findDetailsById(currentRoomId);
-
-        boolean sameRoom =
-                current != null
-                        && current.getHome() != null
-                        && current.getFlat() == null
-                        && current.getBuilding() == null
-                        && Objects.equals(
-                        current.getHome().getId(),
-                        homeId
-                )
-                        && roomNumber.equalsIgnoreCase(
-                        current.getRoomNumber()
-                );
-
-        if (!sameRoom) {
-            throw fieldError(
-                    "roomNumber",
-                    "Room number already exists directly in this home."
-            );
-        }
-    }
-
-    private void validateFlatRoomNumber(
             Long flatId,
-            String roomNumber,
-            Long currentRoomId
+            Long homeId,
+            String roomNumber
     ) {
 
-        boolean exists =
-                roomRepository
-                        .existsByFlatIdAndRoomNumberIgnoreCaseAndDeletedFalse(
-                                flatId,
-                                roomNumber
-                        );
+        if (room == null
+                || room.getId() == null
+                || room.getRoomNumber() == null
+                || !roomNumber.equalsIgnoreCase(room.getRoomNumber())) {
 
-        if (!exists) {
+            return false;
+        }
+
+        return switch (parentType) {
+
+            case DIRECT_BUILDING ->
+
+                    room.getBuilding() != null
+                            && room.getFlat() == null
+                            && room.getHome() == null
+                            && Objects.equals(
+                            room.getBuilding().getId(),
+                            buildingId
+                    );
+
+
+            case DIRECT_HOME ->
+
+                    room.getHome() != null
+                            && room.getFlat() == null
+                            && room.getBuilding() == null
+                            && Objects.equals(
+                            room.getHome().getId(),
+                            homeId
+                    );
+
+
+            case BUILDING_FLAT, HOME_FLAT ->
+
+                    room.getFlat() != null
+                            && Objects.equals(
+                            room.getFlat().getId(),
+                            flatId
+                    );
+
+
+            default -> false;
+        };
+    }
+
+
+    /**
+     * Used when UPDATE changes Room number but does not submit parent IDs.
+     *
+     * This scenario must still run duplicate validation.
+     */
+    private void validateRoomNumberAgainstCurrentParent(
+            EntityRooms room
+    ) {
+
+        String roomNumber =
+                cleanRoomNumber(room.getRoomNumber());
+
+        room.setRoomNumber(roomNumber);
+
+        /*
+         * Flat Room has priority because a Flat Room also contains either
+         * Building or Home references.
+         */
+        if (room.getFlat() != null) {
+
+            RoomParentType type =
+                    room.getBuilding() != null
+                            ? RoomParentType.BUILDING_FLAT
+                            : RoomParentType.HOME_FLAT;
+
+            validateRoomNumberUnique(
+                    room,
+                    type,
+                    null,
+                    room.getFlat().getId(),
+                    null,
+                    roomNumber
+            );
+
             return;
         }
 
-        EntityRooms current =
-                currentRoomId == null
-                        ? null
-                        : roomRepository
-                        .findDetailsById(currentRoomId);
 
-        boolean sameRoom =
-                current != null
-                        && current.getFlat() != null
-                        && Objects.equals(
-                        current.getFlat().getId(),
-                        flatId
-                )
-                        && roomNumber.equalsIgnoreCase(
-                        current.getRoomNumber()
-                );
+        if (room.getBuilding() != null) {
 
-        if (!sameRoom) {
-            throw fieldError(
-                    "roomNumber",
-                    "Room number already exists in this flat."
+            validateRoomNumberUnique(
+                    room,
+                    RoomParentType.DIRECT_BUILDING,
+                    room.getBuilding().getId(),
+                    null,
+                    null,
+                    roomNumber
             );
+
+            return;
         }
+
+
+        if (room.getHome() != null) {
+
+            validateRoomNumberUnique(
+                    room,
+                    RoomParentType.DIRECT_HOME,
+                    null,
+                    null,
+                    room.getHome().getId(),
+                    roomNumber
+            );
+
+            return;
+        }
+
+
+        throw new BusinessConflictException(
+                "Room does not have a valid parent."
+        );
     }
+
+
+    // =========================================================
+    // OWNERSHIP / AUTHORIZATION
+    // =========================================================
 
     private void validateRoomOwnerAccess(
             EntityRooms room,
             Long landlordId
     ) {
 
+        /*
+         * If Room belongs to Flat, Flat ownership is enough because Flat
+         * itself has already been assigned to its landlord.
+         */
         if (room.getFlat() != null) {
+
             validateFlatOwnership(
                     room.getFlat(),
                     landlordId
             );
+
             return;
         }
 
+
         if (room.getBuilding() != null) {
+
             validateBuildingOwnership(
                     room.getBuilding(),
                     landlordId
             );
+
             return;
         }
 
+
         if (room.getHome() != null) {
+
             validateHomeOwnership(
                     room.getHome(),
                     landlordId
             );
+
             return;
         }
+
 
         throw new AccessDeniedException(
                 "Room does not have a valid parent owner."
         );
     }
+
 
     private void validateBuildingOwnership(
             EntityBuildings building,
@@ -1000,27 +1134,13 @@ public class RoomsServicesImpl
                 building.getLandlord().getId(),
                 landlordId
         )) {
+
             throw new AccessDeniedException(
                     "You are not allowed to modify this building."
             );
         }
     }
 
-    private void validateHomeOwnership(
-            EntityHomes home,
-            Long landlordId
-    ) {
-
-        if (home.getLandlord() == null
-                || !Objects.equals(
-                home.getLandlord().getId(),
-                landlordId
-        )) {
-            throw new AccessDeniedException(
-                    "You are not allowed to modify this home."
-            );
-        }
-    }
 
     private void validateFlatOwnership(
             EntityFlats flat,
@@ -1032,17 +1152,59 @@ public class RoomsServicesImpl
                 flat.getLandlord().getId(),
                 landlordId
         )) {
+
             throw new AccessDeniedException(
                     "You are not allowed to modify this flat."
             );
         }
     }
 
-    private EntityBuildings getBuilding(
-            Long buildingId
+
+    private void validateHomeOwnership(
+            EntityHomes home,
+            Long landlordId
     ) {
 
-        validateId(buildingId, "buildingId");
+        if (home.getLandlord() == null
+                || !Objects.equals(
+                home.getLandlord().getId(),
+                landlordId
+        )) {
+
+            throw new AccessDeniedException(
+                    "You are not allowed to modify this home."
+            );
+        }
+    }
+
+
+    // =========================================================
+    // ENTITY LOOKUP
+    // =========================================================
+
+    private EntityRooms getRoom(Long roomId) {
+
+        EntityRooms room =
+                roomRepository.findDetailsById(roomId);
+
+        if (room == null) {
+
+            throw new EntityNotFoundException(
+                    "Room not found with id: "
+                            + roomId
+            );
+        }
+
+        return room;
+    }
+
+
+    private EntityBuildings getBuilding(Long buildingId) {
+
+        validateId(
+                buildingId,
+                "buildingId"
+        );
 
         return buildingRepository
                 .findById(buildingId)
@@ -1054,183 +1216,330 @@ public class RoomsServicesImpl
                 );
     }
 
+
+    /**
+     * Locked because adding/moving Rooms may depend on Home capacity/state.
+     */
     private EntityHomes getHome(Long homeId) {
 
-        validateId(homeId, "homeId");
+        validateId(
+                homeId,
+                "homeId"
+        );
 
-        EntityHomes home = homeRepository.findByIdForUpdate(homeId).orElse(null);
-
-        if (home == null) {
-            throw new EntityNotFoundException("Home not found with id: " + homeId);
-        }
-
-        return home;
+        return homeRepository
+                .findByIdForUpdate(homeId)
+                .orElseThrow(() ->
+                        new EntityNotFoundException(
+                                "Home not found with id: "
+                                        + homeId
+                        )
+                );
     }
 
+
+    /**
+     * Locked because multiple concurrent Room creates must not exceed
+     * Flat room capacity.
+     */
     private EntityFlats getFlat(Long flatId) {
 
-        validateId(flatId, "flatId");
-
-        EntityFlats flat =
-                flatsRepository.findByIdForUpdate(flatId).orElse(null);
-
-        if (flat == null) {
-            throw new EntityNotFoundException(
-                    "Flat not found with id: "
-                            + flatId
-            );
-        }
-
-        return flat;
-    }
-
-    private EntityRooms getRoom(Long roomId) {
-
-        EntityRooms room =
-                roomRepository.findDetailsById(roomId);
-
-        if (room == null) {
-            throw new EntityNotFoundException(
-                    "Room not found with id: "
-                            + roomId
-            );
-        }
-
-        return room;
-    }
-
-    private EntityUnitStatus resolveRoomStatus(
-            String code
-    ) {
-        if (isBlank(code)) {
-            return unitStatusService.getDefaultStatus(StatusDomain.ROOM);
-        }
-
-        // Create and direct edit requests may only submit setup-level statuses.
-        return unitStatusService.getRequiredSetupStatus(StatusDomain.ROOM, code);
-    }
-
-    private EntityUnitStatus requiredStatus(
-            StatusDomain domain,
-            String code
-    ) {
-        return unitStatusService.getRequiredStatus(
-                domain,
-                normalizeStatus(code)
+        validateId(
+                flatId,
+                "flatId"
         );
-    }
 
-    private long countByStatus(
-            List<EntityRooms> rooms,
-            String expectedStatus
-    ) {
-        return rooms.stream()
-                .filter(room -> room.getStatus() != null)
-                .filter(room ->
-                        expectedStatus.equalsIgnoreCase(
-                                room.getStatus().getCode()
+        return flatsRepository
+                .findByIdForUpdate(flatId)
+                .orElseThrow(() ->
+                        new EntityNotFoundException(
+                                "Flat not found with id: "
+                                        + flatId
                         )
-                )
-                .count();
+                );
     }
 
-    private boolean isDerivedRoomStatus(
-            String code
-    ) {
-        return AVAILABLE_AS_ROOMS
-                .equalsIgnoreCase(code)
-                || PARTIALLY_RENTED_AS_ROOMS
-                .equalsIgnoreCase(code)
-                || FULLY_RENTED_AS_ROOMS
-                .equalsIgnoreCase(code);
+
+    // =========================================================
+    // DTO -> ENTITY
+    // =========================================================
+
+    private void applyCreateFields(EntityRooms room, RoomCreateRequestDTO dto) {
+
+        room.setRoomNumber(cleanRoomNumber(dto.getRoomNumber()));
+        room.setSize(clean(dto.getSize()));
+        room.setTenantType(clean(dto.getTenantType()));
+        room.setRentTimeType(clean(dto.getRentTimeType()));
+        room.setPrice(dto.getPrice());
+        room.setHasPrivateBathroom(Boolean.TRUE.equals(dto.getHasPrivateBathroom()));
+        room.setHasAC(Boolean.TRUE.equals(dto.getHasAC()));
+        room.setHasWIFI(Boolean.TRUE.equals(dto.getHasWIFI()));
+        room.setFurnished(Boolean.TRUE.equals(dto.getIsFurnished()));
+        room.setKitchen(clean(dto.getKitchen()));
+        room.setDescription(clean(dto.getDescription()));
     }
 
-    private String statusCode(
-            EntityUnitStatus status
-    ) {
-        return status == null
-                ? null
+
+    /**
+     * Partial update.
+     *
+     * null means "do not update this field".
+     */
+    private void applyUpdateFields(EntityRooms room, RoomUpdateRequestDTO dto) {
+
+        if (dto.getRoomNumber() != null) {
+            room.setRoomNumber(cleanRoomNumber(dto.getRoomNumber()));
+        }
+
+        if (dto.getSize() != null) {
+            room.setSize(clean(dto.getSize()));
+        }
+
+        if (dto.getTenantType() != null) {
+            room.setTenantType(clean(dto.getTenantType()));
+        }
+
+        if (dto.getRentTimeType() != null) {
+            room.setRentTimeType(clean(dto.getRentTimeType()));
+        }
+
+        if (dto.getPrice() != null) {
+            room.setPrice(dto.getPrice());
+        }
+
+        if (dto.getHasPrivateBathroom() != null) {
+            room.setHasPrivateBathroom(dto.getHasPrivateBathroom());
+        }
+
+        if (dto.getHasAC() != null) {
+            room.setHasAC(dto.getHasAC());
+        }
+
+        if (dto.getHasWIFI() != null) {
+            room.setHasWIFI(dto.getHasWIFI());
+        }
+
+        if (dto.getIsFurnished() != null) {
+            room.setFurnished(dto.getIsFurnished());
+        }
+
+        if (dto.getKitchen() != null) {
+            room.setKitchen(clean(dto.getKitchen()));
+        }
+
+        if (dto.getDescription() != null) {
+            room.setDescription(clean(dto.getDescription()));
+        }
+    }
+
+
+    // =========================================================
+    // STATUS
+    // =========================================================
+    private EntityUnitStatus resolveRoomStatus(String code) {
+
+        return unitStatusService
+                .getRequiredSetupStatus(
+                        StatusDomain.ROOM,
+                        normalizeStatus(code)
+                );
+    }
+
+
+    private String statusCode(EntityUnitStatus status) {
+
+        return status == null ? null
                 : status.getCode();
     }
 
+
+    // =========================================================
+    // MEDIA
+    // =========================================================
+    private void saveRoomImages(Long roomId, List<MultipartFile> images) throws IOException {
+
+        if (images == null || images.isEmpty()) {
+            return;
+        }
+
+        propertyMediaService.saveImages(
+                images,
+                PropertyType.ROOM,
+                roomId
+        );
+    }
+
+
+    // =========================================================
+    // REFRESH PARENT STATES
+    // =========================================================
+
+    /**
+     * Refresh every affected Flat/Home exactly once.
+     *
+     * Examples:
+     *
+     * CREATE:
+     * old = null
+     * new = selected parent
+     *
+     * MOVE:
+     * old = old parent
+     * new = new parent
+     *
+     * STATUS CHANGE:
+     * old/new may be the same -> Set removes duplicate
+     *
+     * DELETE:
+     * old = previous parent
+     * new = null
+     */
+    private void refreshAffectedParents(
+            Long oldFlatId,
+            Long newFlatId,
+            Long oldHomeId,
+            Long newHomeId
+    ) {
+
+        Set<Long> flatIds = new LinkedHashSet<>();
+
+        addValidId(flatIds, oldFlatId);
+        addValidId(flatIds, newFlatId);
+
+        for (Long flatId : flatIds) {
+            flatsService.refreshFlatState(flatId);
+        }
+
+
+        Set<Long> homeIds = new LinkedHashSet<>();
+
+        addValidId(homeIds, oldHomeId);
+        addValidId(homeIds, newHomeId);
+
+        for (Long homeId : homeIds) {
+            homeService.refreshHomeState(homeId);
+        }
+    }
+
+
+    private void addValidId(Set<Long> ids, Long id) {
+
+        if (id != null && id > 0) {
+            ids.add(id);
+        }
+    }
+
+
+    // =========================================================
+    // ENTITY -> DTO
+    // =========================================================
+
+    private RoomDetailsDTO toDTO(EntityRooms room) {
+
+        EntityBuildings building = room.getBuilding();
+        EntityHomes home = room.getHome();
+        EntityFlats flat = room.getFlat();
+
+        EntityBuildings locationBuilding =
+                building != null ? building
+                            : flat != null ? flat.getBuilding()
+                            : null;
+
+
+        EntityHomes locationHome =
+                home != null ? home
+                        : flat != null ? flat.getHome()
+                        : null;
+
+
+        List<String> images = propertyMediaService.getImages(PropertyType.ROOM,room.getId())
+                                    .stream()
+                                    .map(PropertyMediaDTO::getFileUrl)
+                                    .toList();
+
+
+        return RoomDetailsDTO.builder()
+
+                .id(room.getId())
+                .roomNumber(room.getRoomNumber())
+                .size(room.getSize())
+                .status(toStatusDTO(room.getStatus()))
+                .tenantType(room.getTenantType())
+                .rentTimeType(room.getRentTimeType())
+                .price(room.getPrice())
+                .hasPrivateBathroom(room.isHasPrivateBathroom())
+                .hasAC(room.isHasAC())
+                .hasWIFI(room.isHasWIFI())
+                .isFurnished(room.isFurnished())
+                .kitchen(room.getKitchen())
+                .description(room.getDescription())
+                .buildingId(building != null ? building.getId() : null)
+                .flatId(flat != null ? flat.getId() : null)
+                .homeId(home != null ? home.getId() : null)
+                .buildingName(locationBuilding != null ? locationBuilding.getBuildingName() : null)
+                .buildingNumber(locationBuilding != null ? locationBuilding.getBuildingNumber() : null)
+                .flatLabel(flat != null ? "Flat " + flat.getFlatNumber() : null)
+                .homeLabel(locationHome != null ? locationHome.getHomeType() + "." + locationHome.getHomeNumber() : null)
+                .fromFlat(flat != null)
+                .fromHome(locationHome != null)
+                .images(images == null ? Collections.emptyList() : images)
+                .build();
+    }
+
+
+    private RoomStatusDTO toStatusDTO(EntityUnitStatus status) {
+
+        if (status == null) {
+            return null;
+        }
+
+        return RoomStatusDTO.builder()
+                .id(status.getId())
+                .statusDomain(status.getStatusDomain())
+                .code(status.getCode())
+                .nameEn(status.getNameEn())
+                .nameAr(status.getNameAr())
+                .colorCode(status.getColorCode())
+                .icon(status.getIcon())
+                .build();
+    }
+
+
+    // =========================================================
+    // COMMON UTILITIES
+    // =========================================================
+
     private void activateRoom(EntityRooms room) {
+
         room.setActive(true);
         room.setDeleted(false);
         room.setDeletedAt(null);
     }
 
-    private String cleanRoomNumber(
-            String value
-    ) {
 
-        String cleaned = cleanRequired(value, "Room number is required.");
 
-        /*
-         * Allows old generated values to be cleaned during migration.
-         */
-        if (cleaned.contains("_R-")) {
-            return cleaned.substring(cleaned.lastIndexOf("_R-") + 3);
-        }
-
-        return cleaned;
-    }
-
-    private void validateAuthenticatedLandlord(
-            Long landlordId
-    ) {
-        if (landlordId == null || landlordId <= 0) {
-            throw new AccessDeniedException(
-                    "Authenticated landlord id is required."
-            );
-        }
-    }
-
-    private void validateId(
-            Long id,
-            String field
-    ) {
-        if (id == null || id <= 0) {
-            throw fieldError(
-                    field,
-                    field
-                            + " is required and must be greater than zero."
-            );
-        }
-    }
-
-    private void required(
-            Map<String, String> errors,
-            String field,
-            String value
-    ) {
-        if (isBlank(value)) {
-            errors.put(field, field + " is required.");
-        }
-    }
-
-    private String normalizeStatus(String value) {
-        return cleanRequired(
-                value,
-                "Status is required."
-        ).toUpperCase(Locale.ROOT);
-    }
-
-    private String cleanRequired(
-            String value,
-            String message
-    ) {
+    private String cleanRoomNumber(String value) {
 
         String cleaned = clean(value);
 
         if (cleaned == null) {
-            throw fieldError(
-                    "value",
-                    message
-            );
+
+            throw fieldError("roomNumber", "Room number is required.");
+        }
+
+        if (cleaned.contains("_R-")) {
+
+            cleaned = cleaned.substring(cleaned.lastIndexOf("_R-") + 3);
+        }
+
+        if (cleaned.isBlank()) {
+
+            throw fieldError("roomNumber", "Room number is required.");
         }
 
         return cleaned;
     }
+
 
     private String clean(String value) {
 
@@ -1245,187 +1554,70 @@ public class RoomsServicesImpl
                 : cleaned;
     }
 
-    private boolean isBlank(String value) {
-        return value == null
-                || value.trim().isEmpty();
+
+    private String normalizeStatus(String value) {
+
+        String cleaned = clean(value);
+
+        if (cleaned == null) {
+
+            throw fieldError("statusCode", "Room status is required.");
+        }
+
+        return cleaned.toUpperCase(Locale.ROOT);
     }
 
-    private FieldValidationException fieldError(
-            String field,
-            String message
-    ) {
-        return new FieldValidationException(
-                message,
-                Map.of(field, message)
-        );
+
+    private void validateAuthenticatedLandlord(Long landlordId) {
+
+        if (landlordId == null || landlordId <= 0) {
+
+            throw new AccessDeniedException("Authenticated landlord id is required.");
+        }
     }
+
+
+    private void validateId(Long id, String field) {
+
+        if (id == null || id <= 0) {
+
+            throw fieldError(field, field + " is required and must be greater than zero.");
+        }
+    }
+
+
+    private FieldValidationException fieldError(String field, String message) {
+
+        return new FieldValidationException(message, Map.of(field, message));
+    }
+
 
     private Long idOf(EntityFlats flat) {
-        return flat == null ? null : flat.getId();
+
+        return flat == null ? null
+                : flat.getId();
     }
+
 
     private Long resolveHomeId(EntityRooms room) {
-        if (room == null) return null;
-        if (room.getHome() != null) return room.getHome().getId();
-        if (room.getFlat() != null && room.getFlat().getHome() != null) {
-            return room.getFlat().getHome().getId();
-        }
-        return null;
-    }
 
-    /*
-     * Keep your existing RoomDetailsDTO mapping if its builder fields
-     * differ. The important parent location resolution is:
-     *
-     * EntityBuildings locationBuilding =
-     *     room.getBuilding() != null
-     *         ? room.getBuilding()
-     *         : room.getFlat() != null
-     *             ? room.getFlat().getBuilding()
-     *             : null;
-     *
-     * EntityHomes locationHome =
-     *     room.getHome() != null
-     *         ? room.getHome()
-     *         : room.getFlat() != null
-     *             ? room.getFlat().getHome()
-     *             : null;
-     */
-    private RoomDetailsDTO toDTO(EntityRooms room) {
-
-        EntityBuildings building = room.getBuilding();
-
-        EntityHomes home = room.getHome();
-
-        EntityFlats flat = room.getFlat();
-
-        EntityBuildings locationBuilding =
-                building != null
-                        ? building
-                        : flat != null
-                        ? flat.getBuilding()
-                        : null;
-
-        EntityHomes locationHome =
-                home != null
-                        ? home
-                        : flat != null
-                        ? flat.getHome()
-                        : null;
-
-        List<String> images = propertyMediaService.getImages(PropertyType.ROOM, room.getId())
-                        .stream()
-                        .map(PropertyMediaDTO::getFileUrl)
-                        .toList();
-
-        return RoomDetailsDTO.builder()
-                .id(room.getId())
-                .roomNumber(room.getRoomNumber())
-                .size(room.getSize())
-                .status(toStatusDTO(room.getStatus()))
-                .tenantType(room.getTenantType())
-                .rentTimeType(room.getRentTimeType())
-                .price(room.getPrice())
-                .hasPrivateBathroom(room.isHasPrivateBathroom())
-                .hasAC(room.isHasAC())
-                .hasWIFI(room.isHasWIFI())
-                .isFurnished(room.isFurnished())
-                .kitchen(room.getKitchen())
-                .description(room.getDescription())
-                .buildingId(
-                        building != null
-                                ? building.getId()
-                                : null
-                )
-                .flatId(
-                        flat != null
-                                ? flat.getId()
-                                : null
-                )
-                .homeId(
-                        home != null
-                                ? home.getId()
-                                : null
-                )
-                .buildingName(
-                        locationBuilding != null
-                                ? locationBuilding
-                                .getBuildingName()
-                                : null
-                )
-                .buildingNumber(
-                        locationBuilding != null
-                                ? locationBuilding
-                                .getBuildingNumber()
-                                : null
-                )
-                .flatLabel(
-                        flat != null
-                                ? "Flat "
-                                + flat.getFlatNumber()
-                                : null
-                )
-                .homeLabel(
-                        locationHome != null
-                                ? locationHome.getHomeType()+"."+locationHome.getHomeNumber()
-                                : null
-                )
-                .fromFlat(flat != null)
-                .fromHome(locationHome != null)
-                .images(
-                        images == null
-                                ? Collections.emptyList()
-                                : images
-                )
-                .build();
-    }
-
-    private RoomStatusDTO toStatusDTO(
-            EntityUnitStatus status
-    ) {
-
-        if (status == null) {
+        if (room == null) {
             return null;
         }
 
-        return RoomStatusDTO.builder()
-                .id(status.getId())
-                .statusDomain(
-                        status.getStatusDomain()
-                )
-                .code(status.getCode())
-                .nameEn(status.getNameEn())
-                .nameAr(status.getNameAr())
-                .colorCode(status.getColorCode())
-                .icon(status.getIcon())
-                .build();
-    }
-
-    /**
-     * Refreshes all old/new Flat and Home parents after Room create, move,
-     * status update or soft-delete. Building-only paths remain unchanged.
-     */
-    private void refreshAffectedParents(
-            Long oldFlatId,
-            Long newFlatId,
-            Long oldHomeId,
-            Long newHomeId
-    ) {
-        Set<Long> flatIds = new LinkedHashSet<>();
-        if (oldFlatId != null && oldFlatId > 0) flatIds.add(oldFlatId);
-        if (newFlatId != null && newFlatId > 0) flatIds.add(newFlatId);
-
-        for (Long flatId : flatIds) {
-            flatsService.refreshFlatState(flatId);
+        if (room.getHome() != null) {
+            return room.getHome().getId();
         }
 
-        Set<Long> homeIds = new LinkedHashSet<>();
-        if (oldHomeId != null && oldHomeId > 0) homeIds.add(oldHomeId);
-        if (newHomeId != null && newHomeId > 0) homeIds.add(newHomeId);
+        if (room.getFlat() != null
+                && room.getFlat().getHome() != null) {
 
-        for (Long homeId : homeIds) {
-            homeService.refreshHomeState(homeId);
+            return room
+                    .getFlat()
+                    .getHome()
+                    .getId();
         }
-    }
 
+        return null;
+    }
 }

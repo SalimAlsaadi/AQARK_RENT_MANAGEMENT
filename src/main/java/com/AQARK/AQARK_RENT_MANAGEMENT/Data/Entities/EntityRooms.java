@@ -96,6 +96,13 @@ public class EntityRooms {
 
 
 
+    //comment by salim to remember in future why we did this validation
+    //This overlaps with validateParentFields(), but I recommend keeping it.
+    //
+    //The two validations have different purposes:
+    //
+    //DTO/service validation gives a clear client-facing error before persistence.
+    //Entity validation protects the database model from invalid entity construction elsewhere in the application.
     @AssertTrue(message = "Room parent combination(home and building) is invalid.")
     public boolean isParentValid() {
         boolean directBuildingRoom =
