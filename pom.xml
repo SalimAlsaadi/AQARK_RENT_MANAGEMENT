@@ -114,6 +114,15 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- Loads the project-root .env file into the Spring Environment so ${...}
+		     placeholders in application.properties resolve from it. Keeps secrets
+		     (DB password, Keycloak admin) out of the committed properties file. -->
+		<dependency>
+			<groupId>me.paulschwarz</groupId>
+			<artifactId>spring-dotenv</artifactId>
+			<version>4.0.0</version>
+		</dependency>
+
 	</dependencies>
 
 	<build>
