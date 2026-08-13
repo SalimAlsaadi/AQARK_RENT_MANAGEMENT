@@ -390,10 +390,26 @@ public class PropertyMediaService {
         return index != -1 ? filename.substring(index).toLowerCase() : "";
     }
 
+    /**
+     * Builds the URL the browser should request, at read time, from the row's storage key.
+     * The persisted {@code file_url} column is deliberately ignored: it was baked with whatever
+     * host {@code media.public-base-url} happened to be at upload time, so rows written on one
+     * environment serve dead links on another. The storage key is environment-independent.
+     */
+    private String publicUrlFor(PropertyMedia media) {
+        String storageKey = media.getStorageKey();
+
+        if (storageKey == null || storageKey.isBlank()) {
+            return media.getFileUrl();
+        }
+
+        return publicBaseUrl + "/" + storageKey;
+    }
+
     private PropertyMediaDTO toDTO(PropertyMedia media) {
         return PropertyMediaDTO.builder()
                 .id(media.getId())
-                .fileUrl(media.getFileUrl())
+                .fileUrl(publicUrlFor(media))
                 .originalFileName(media.getOriginalFileName())
                 .contentType(media.getContentType())
                 .sizeBytes(media.getSizeBytes())

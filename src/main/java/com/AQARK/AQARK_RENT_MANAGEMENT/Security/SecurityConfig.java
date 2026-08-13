@@ -102,6 +102,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/actuator/**").hasRole("ACTUATOR")
+                // Same read-only image exemption as the BFF chain, so a native client whose token
+                // has expired still renders already-loaded listings instead of blanking them out.
+                .requestMatchers(HttpMethod.GET, "/api/media/**", "/api/images/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // Landlord property-management APIs — landlords only.
                 .requestMatchers("/api/buildings/**", "/api/flats/**", "/api/rooms/**").hasRole("LANDLORD")
@@ -147,6 +150,11 @@ public class SecurityConfig {
                 .requestMatchers("/error").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/actuator/**").hasRole("ACTUATOR")
+                // Property images are loaded by <img> tags, which send neither a bearer token nor
+                // (cross-site) a session cookie, so anything but permitAll renders them as broken
+                // images. Read-only, and stored file names are random UUIDs, so the listing photos
+                // are unguessable rather than enumerable.
+                .requestMatchers(HttpMethod.GET, "/api/media/**", "/api/images/**").permitAll()
                 // Public tenant/landlord self-registration + the role list its form needs.
                 .requestMatchers(HttpMethod.POST, "/api/users/registerWithSAS").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/ref-types", "/api/ref-types/**").permitAll()

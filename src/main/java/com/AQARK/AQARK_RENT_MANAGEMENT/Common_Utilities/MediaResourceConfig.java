@@ -21,7 +21,16 @@ public class MediaResourceConfig implements WebMvcConfigurer {
                 .toAbsolutePath()
                 .normalize();
 
+        // Path.toUri() only appends the trailing slash when the directory already exists on disk.
+        // Without it Spring treats the location as a file rather than a folder and every lookup
+        // under /api/media/** misses, so append it ourselves instead of depending on the FS state.
+        String location = uploadPath.toUri().toString();
+
+        if (!location.endsWith("/")) {
+            location = location + "/";
+        }
+
         registry.addResourceHandler("/api/media/**")
-                .addResourceLocations(uploadPath.toUri().toString());
+                .addResourceLocations(location);
     }
 }
