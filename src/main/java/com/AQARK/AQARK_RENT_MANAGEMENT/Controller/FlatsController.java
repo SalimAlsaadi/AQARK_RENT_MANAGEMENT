@@ -3,11 +3,13 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.BuildingDTO.BuildingIdDTO;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.HomeIdDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.ApiResponse;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.FlatsServicesInterface;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/flats")
@@ -64,13 +67,6 @@ public class FlatsController {
         return flatsService.getFlatListByHomeId(home.getHomeId());
     }
 
-    @GetMapping("/landlord/{landlordId}")
-    public List<FlatDetailsDTO> getFlatsByLandlord(
-            @PathVariable Long landlordId
-    ) {
-        return flatsService.getFlatsByLandlordId(landlordId);
-    }
-
     @GetMapping("/my-flats")
     public List<FlatDetailsDTO> getMyFlats(
             Authentication authentication
@@ -87,37 +83,33 @@ public class FlatsController {
         return flatsService.searchFlats(filter);
     }
 
-    @PutMapping(
-            value = "/{id}",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
-    )
+    @PostMapping(value = "/updateFlat", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public FlatDetailsDTO updateFlat(
-            @PathVariable Long id,
             @RequestPart("flat") String flatJson,
-            @RequestPart(value = "newPictures", required = false) List<MultipartFile> newPictures,
-            @RequestPart(value = "imagesToDelete", required = false) String imagesToDeleteJson
+            @RequestPart(value = "newImages", required = false) List<MultipartFile> newPictures,
+            @RequestPart(value = "imageIdsToDelete", required = false) String imagesToDeleteJson
     ) throws IOException {
 
-        FlatUpdateRequestDTO dto =
-                objectMapper.readValue(flatJson, FlatUpdateRequestDTO.class);
+        FlatUpdateRequestDTO dto = objectMapper.readValue(flatJson, FlatUpdateRequestDTO.class);
 
-        List<Long> imagesToDelete =
-                parseIds(imagesToDeleteJson);
+        List<Long> imagesToDelete = parseIds(imagesToDeleteJson);
 
-        return flatsService.updateFlat(
-                id,
-                dto,
-                safeFiles(newPictures),
-                imagesToDelete
+        return flatsService.updateFlat(dto, safeFiles(newPictures), imagesToDelete);
+    }
+
+    @PostMapping("/deleteFlat")
+    public ResponseEntity<?> deleteFlat(@RequestBody FlatIdDTO flat) {
+        flatsService.deleteFlat(flat.getFlatId());
+        return ResponseEntity.ok(
+                ApiResponse.success("Flat deleted successfully",  null)
         );
+
     }
 
-    @DeleteMapping("/{id}")
-    public void deleteFlat(
-            @PathVariable Long id
-    ) {
-        flatsService.deleteFlat(id);
-    }
+
+
+
+
 
     private Long extractRefId(Authentication authentication) {
         if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {

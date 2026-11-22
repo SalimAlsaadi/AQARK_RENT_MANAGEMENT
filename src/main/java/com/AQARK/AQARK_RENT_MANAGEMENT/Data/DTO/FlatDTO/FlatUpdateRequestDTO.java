@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
@@ -19,27 +20,14 @@ public class FlatUpdateRequestDTO {
     @Size(max = 50, message = "Flat number must not exceed 50 characters")
     private String flatNumber;
 
-    @NotBlank(message = "Number of rooms is required")
-    @Size(max = 50, message = "Number of rooms must not exceed 50 characters")
-    private Integer numberOfRooms;
+    private boolean hasAC;
 
-    @NotBlank(message = "Number of bathrooms is required")
-    @Size(max = 50, message = "Number of bathrooms must not exceed 50 characters")
-    private String numberOfBathrooms;
+    private boolean hasWIFI;
 
-    private Boolean hasLivingRoom = false;
-
-    private boolean hasAC = false;
-
-    private boolean hasWIFI = false;
-
-    private boolean isFurnished = false;
+    @JsonProperty("isFurnished")
+    private boolean isFurnished;
 
     private String statusCode;
-
-    @NotBlank(message = "Floor number is required")
-    @Size(max = 50, message = "Floor number must not exceed 50 characters")
-    private String floorNumber;
 
     @Size(max = 1000, message = "Description must not exceed 1000 characters")
     private String description;
@@ -56,8 +44,4 @@ public class FlatUpdateRequestDTO {
 
     @Size(max = 30, message = "Mobile number must not exceed 30 characters")
     private String mobileNumber;
-
-    private Long buildingId;
-
-    private Long homeId;
 }

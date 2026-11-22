@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -60,5 +61,5 @@ public class RoomDetailsDTO {
     private String flatLabel;
     private String homeLabel;
 
-    private List<String> images;
+    private List<PropertyMediaDTO> images;
 }

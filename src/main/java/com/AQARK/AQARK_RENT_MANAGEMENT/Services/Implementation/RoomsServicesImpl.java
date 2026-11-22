@@ -6,6 +6,7 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Entities.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.PropertyType;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusDomain;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.Enums.StatusLevel;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.BusinessConflictException;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.FieldValidationException;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Repositories.*;
@@ -13,6 +14,7 @@ import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.UnitStatusServiceInterface;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
+import jakarta.validation.constraints.Null;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -67,9 +69,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
         applyCreateFields(room, dto);
 
-        room.setStatus(
-                resolveRoomStatus(dto.getStatusCode())
-        );
+        room.setStatus(resolveRoomStatus(dto.getStatusCode(), StatusLevel.U));
 
         assignParent(
                 room,
@@ -85,10 +85,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         saveRoomImages(savedRoom.getId(), images);
 
         refreshAffectedParents(
-                null,
-                idOf(savedRoom.getFlat()),
-                null,
-                resolveHomeId(savedRoom)
+       savedRoom.getFlat().getId(), savedRoom.getHome().getId()
         );
 
         return toDTO(savedRoom);
@@ -113,21 +110,12 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         validateAuthenticatedLandlord(landlordId);
 
         if (dto == null) {
-            throw fieldError(
-                    "data",
-                    "Room request is required."
-            );
+            throw fieldError("data", "Room request is required.");
         }
 
         EntityRooms room = getRoom(roomId);
 
         validateRoomOwnerAccess(room, landlordId);
-
-        /*
-         * Save previous parents because Room may be moved.
-         */
-        Long oldFlatId = idOf(room.getFlat());
-        Long oldHomeId = resolveHomeId(room);
 
         /*
          * Only submitted fields are changed.
@@ -140,9 +128,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
          * If provided, it must still be a valid setup-level Room status.
          */
         if (dto.getStatusCode() != null) {
-            room.setStatus(
-                    resolveRoomStatus(dto.getStatusCode())
-            );
+            room.setStatus(resolveRoomStatus(dto.getStatusCode(), StatusLevel.U));
         }
 
         RoomParentType requestedParentType = resolveParentType(
@@ -158,7 +144,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         /*
          * NONE on update means:
          *
-         * "Do not change the current parent."
+         * "Do not = the current parent."
          *
          * Any other valid combination means the caller wants to assign/move
          * the Room to that parent.
@@ -176,16 +162,6 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
         } else if (dto.getRoomNumber() != null) {
 
-            /*
-             * IMPORTANT:
-             *
-             * Parent did not change, but Room number changed.
-             *
-             * We must still check duplicate Room numbers against the current
-             * Building / Flat / Home.
-             *
-             * The old implementation missed this scenario.
-             */
             validateRoomNumberAgainstCurrentParent(room);
         }
 
@@ -198,12 +174,16 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
                 newImages
         );
 
-        refreshAffectedParents(
-                oldFlatId,
-                idOf(savedRoom.getFlat()),
-                oldHomeId,
-                resolveHomeId(savedRoom)
-        );
+        Long flatId = savedRoom.getFlat() != null
+                        ? savedRoom.getFlat().getId()
+                        : null;
+
+
+        Long homeId = savedRoom.getHome() != null
+                        ? savedRoom.getHome().getId()
+                        : null;
+
+        refreshAffectedParents(flatId, homeId);
 
         return toDTO(savedRoom);
     }
@@ -218,9 +198,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
         validateId(roomId, "roomId");
 
-        return toDTO(
-                getRoom(roomId)
-        );
+        return toDTO(getRoom(roomId));
     }
 
 
@@ -303,12 +281,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         /*
          * A deleted Room may change its Flat/Home derived status.
          */
-        refreshAffectedParents(
-                oldFlatId,
-                null,
-                oldHomeId,
-                null
-        );
+        refreshAffectedParents(room.getFlat().getId(), room.getHome().getId());
     }
 
 
@@ -415,13 +388,9 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
             case DIRECT_BUILDING -> {
 
-                EntityBuildings building =
-                        getBuilding(buildingId);
+                EntityBuildings building = getBuilding(buildingId);
 
-                validateBuildingOwnership(
-                        building,
-                        landlordId
-                );
+                validateBuildingOwnership(building, landlordId);
 
                 validateBuildingAcceptsRooms(building);
 
@@ -449,33 +418,19 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
             case BUILDING_FLAT -> {
 
-                EntityBuildings building =
-                        getBuilding(buildingId);
+                EntityBuildings building = getBuilding(buildingId);
 
-                EntityFlats flat =
-                        getFlat(flatId);
+                EntityFlats flat = getFlat(flatId);
 
-                validateBuildingOwnership(
-                        building,
-                        landlordId
-                );
+                validateBuildingOwnership(building, landlordId);
 
-                validateFlatOwnership(
-                        flat,
-                        landlordId
-                );
+                validateFlatOwnership(flat, landlordId);
 
-                validateFlatBelongsToBuilding(
-                        flat,
-                        building
-                );
+                validateFlatBelongsToBuilding(flat, building);
 
                 validateFlatCanBeUsedAsRooms(flat);
 
-                validateFlatRoomCapacity(
-                        flat,
-                        room.getId()
-                );
+                validateFlatRoomCapacity(flat, room.getId());
 
                 validateRoomNumberUnique(
                         room,
@@ -501,20 +456,13 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
             case DIRECT_HOME -> {
 
-                EntityHomes home =
-                        getHome(homeId);
+                EntityHomes home = getHome(homeId);
 
-                validateHomeOwnership(
-                        home,
-                        landlordId
-                );
+                validateHomeOwnership(home, landlordId);
 
                 validateHomeAcceptsRooms(home);
 
-                validateHomeDirectRoomCapacity(
-                        home,
-                        room.getId()
-                );
+                validateHomeDirectRoomCapacity(home, room.getId());
 
                 validateRoomNumberUnique(
                         room,
@@ -540,33 +488,19 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
 
             case HOME_FLAT -> {
 
-                EntityHomes home =
-                        getHome(homeId);
+                EntityHomes home = getHome(homeId);
 
-                EntityFlats flat =
-                        getFlat(flatId);
+                EntityFlats flat = getFlat(flatId);
 
-                validateHomeOwnership(
-                        home,
-                        landlordId
-                );
+                validateHomeOwnership(home, landlordId);
 
-                validateFlatOwnership(
-                        flat,
-                        landlordId
-                );
+                validateFlatOwnership(flat, landlordId);
 
-                validateFlatBelongsToHome(
-                        flat,
-                        home
-                );
+                validateFlatBelongsToHome(flat, home);
 
                 validateFlatCanBeUsedAsRooms(flat);
 
-                validateFlatRoomCapacity(
-                        flat,
-                        room.getId()
-                );
+                validateFlatRoomCapacity(flat, room.getId());
 
                 validateRoomNumberUnique(
                         room,
@@ -586,8 +520,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
             }
 
 
-            default ->
-                    throw invalidParentException();
+            default -> throw invalidParentException();
         }
 
         room.setRoomNumber(roomNumber);
@@ -1336,13 +1269,9 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
     // =========================================================
     // STATUS
     // =========================================================
-    private EntityUnitStatus resolveRoomStatus(String code) {
+    private EntityUnitStatus resolveRoomStatus(String code, StatusLevel level) {
 
-        return unitStatusService
-                .getRequiredSetupStatus(
-                        StatusDomain.ROOM,
-                        normalizeStatus(code)
-                );
+        return unitStatusService.getRequiredStatus(StatusDomain.ROOM, normalizeStatus(code), level);
     }
 
 
@@ -1394,31 +1323,13 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
      * old = previous parent
      * new = null
      */
-    private void refreshAffectedParents(
-            Long oldFlatId,
-            Long newFlatId,
-            Long oldHomeId,
-            Long newHomeId
-    ) {
+    private void refreshAffectedParents(Long flatId, Long homeId) {
 
-        Set<Long> flatIds = new LinkedHashSet<>();
 
-        addValidId(flatIds, oldFlatId);
-        addValidId(flatIds, newFlatId);
-
-        for (Long flatId : flatIds) {
             flatsService.refreshFlatState(flatId);
-        }
 
-
-        Set<Long> homeIds = new LinkedHashSet<>();
-
-        addValidId(homeIds, oldHomeId);
-        addValidId(homeIds, newHomeId);
-
-        for (Long homeId : homeIds) {
             homeService.refreshHomeState(homeId);
-        }
+
     }
 
 
@@ -1440,22 +1351,32 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
         EntityHomes home = room.getHome();
         EntityFlats flat = room.getFlat();
 
-        EntityBuildings locationBuilding =
-                building != null ? building
-                            : flat != null ? flat.getBuilding()
-                            : null;
+        EntityBuildings locationBuilding = building != null ? building
+                                        : flat != null ? flat.getBuilding()
+                                        : null;
 
 
-        EntityHomes locationHome =
-                home != null ? home
-                        : flat != null ? flat.getHome()
-                        : null;
+        EntityHomes locationHome = home != null ? home
+                                : flat != null ? flat.getHome()
+                                : null;
 
 
-        List<String> images = propertyMediaService.getImages(PropertyType.ROOM,room.getId())
-                                    .stream()
-                                    .map(PropertyMediaDTO::getFileUrl)
-                                    .toList();
+        List<PropertyMediaDTO> images =
+                propertyMediaService
+                        .getImages(PropertyType.ROOM, room.getId())
+                        .stream()
+                        .map(image ->
+                                PropertyMediaDTO.builder()
+                                        .id(image.getId())
+                                        .fileUrl(image.getFileUrl())
+                                        .originalFileName(image.getOriginalFileName())
+                                        .contentType(image.getContentType())
+                                        .sizeBytes(image.getSizeBytes())
+                                        .mainImage(image.isMainImage())
+                                        .sortOrder(image.getSortOrder())
+                                        .build()
+                        )
+                        .toList();
 
 
         return RoomDetailsDTO.builder()
@@ -1475,6 +1396,15 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
                 .description(room.getDescription())
                 .buildingId(building != null ? building.getId() : null)
                 .flatId(flat != null ? flat.getId() : null)
+                .regionId(locationBuilding !=null ? locationBuilding.getRegion().getId() : locationHome.getRegion().getId())
+                .region(locationBuilding != null ? locationBuilding.getRegion().getNameEn() : locationHome.getRegion().getNameEn())
+                .regionAr(locationBuilding != null ? locationBuilding.getRegion().getNameAr() : locationHome.getRegion().getNameAr())
+                .wilayaId(locationBuilding != null ? locationBuilding.getWilaya().getId() : locationHome.getWilaya().getId())
+                .wilaya(locationBuilding != null ? locationBuilding.getWilaya().getNameEn() : locationHome.getWilaya().getNameEn())
+                .wilayaAr(locationBuilding != null ? locationBuilding.getWilaya().getNameAr() : locationHome.getWilaya().getNameAr())
+                .areaId(locationBuilding != null ? locationBuilding.getArea().getId() : locationHome.getArea().getId())
+                .area(locationBuilding != null ? locationBuilding.getArea().getNameEn() : locationHome.getArea().getNameEn())
+                .areaAr(locationBuilding !=null ? locationBuilding.getArea().getNameAr() : locationHome.getArea().getNameAr())
                 .homeId(home != null ? home.getId() : null)
                 .buildingName(locationBuilding != null ? locationBuilding.getBuildingName() : null)
                 .buildingNumber(locationBuilding != null ? locationBuilding.getBuildingNumber() : null)
@@ -1609,8 +1539,7 @@ public class RoomsServicesImpl implements RoomsServicesInterface {
             return room.getHome().getId();
         }
 
-        if (room.getFlat() != null
-                && room.getFlat().getHome() != null) {
+        if (room.getFlat() != null && room.getFlat().getHome() != null) {
 
             return room
                     .getFlat()

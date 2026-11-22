@@ -15,6 +15,8 @@ import java.math.BigDecimal;
 public class RoomUpdateRequestDTO {
 
 
+    private Long roomId;
+
     @Size(min = 1, max = 100, message = "Room number must contain between 1 and 100 characters.")
     private String roomNumber;
 

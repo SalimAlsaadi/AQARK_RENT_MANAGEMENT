@@ -350,7 +350,7 @@ public class HomeServiceImpl implements HomeServiceInterface {
 
             throw new BusinessConflictException(
                     "Cannot delete home because it still has active Flats or Rooms. "
-                            + "Delete or move those units first."
+                            + "Delete those units first."
             );
         }
 
@@ -1130,23 +1130,6 @@ public class HomeServiceImpl implements HomeServiceInterface {
         }
 
 
-        updateLocationIfRequested(home, dto);
-
-
-        if (dto.getLatitude() != null) {
-            home.setLatitude(
-                    dto.getLatitude()
-            );
-        }
-
-
-        if (dto.getLongitude() != null) {
-            home.setLongitude(
-                    dto.getLongitude()
-            );
-        }
-
-
         if (dto.getTenantType() != null) {
             home.setTenantType(
                     clean(dto.getTenantType())
@@ -1168,41 +1151,6 @@ public class HomeServiceImpl implements HomeServiceInterface {
         }
     }
 
-
-    private void updateLocationIfRequested(EntityHomes home, HomeUpdateRequestDTO dto) {
-
-        if (dto.getRegionId() == null && dto.getWilayaId() == null && dto.getAreaId() == null) {
-            return;
-        }
-
-
-        Long regionId =
-                dto.getRegionId() != null
-                        ? dto.getRegionId()
-                        : idOf(home.getRegion());
-
-
-        Long wilayaId =
-                dto.getWilayaId() != null
-                        ? dto.getWilayaId()
-                        : idOf(home.getWilaya());
-
-
-        Long areaId =
-                dto.getAreaId() != null
-                        ? dto.getAreaId()
-                        : idOf(home.getArea());
-
-
-        LocationData location = getValidLocation(regionId, wilayaId, areaId);
-
-
-        home.setRegion(location.region());
-
-        home.setWilaya(location.wilaya());
-
-        home.setArea(location.area());
-    }
 
 
     // =========================================================

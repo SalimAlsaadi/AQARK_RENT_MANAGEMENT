@@ -1,5 +1,6 @@
 package com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.FlatDTO;
 
+import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.MediaDTO.PropertyMediaDTO;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -71,5 +72,4 @@ public class FlatDetailsDTO {
     private Boolean hasGym;
     private Boolean hasSwimmingPool;
 
-    private List<String> images;
-}
+    private List<PropertyMediaDTO> images;}

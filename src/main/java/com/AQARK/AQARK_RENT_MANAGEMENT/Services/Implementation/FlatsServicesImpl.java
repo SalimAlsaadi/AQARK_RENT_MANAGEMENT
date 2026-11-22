@@ -70,7 +70,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         EntityUser landlord = getLandlord(landlordId);
 
         EntityFlats flat = EntityFlats.builder()
-                .flatNumber(cleanRequired(dto.getFlatNumber(), "Flat number is required."))
+                .flatNumber(dto.getFlatNumber())
                 .numberOfRooms(dto.getNumberOfRooms())
                 .numberOfBathrooms(cleanRequired(dto.getNumberOfBathrooms(), "Number of bathrooms is required."))
                 .hasLivingRoom(Boolean.TRUE.equals(dto.getHasLivingRoom()))
@@ -109,19 +109,16 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     @Override
     @Transactional
     public FlatDetailsDTO updateFlat(
-            Long flatId,
             FlatUpdateRequestDTO dto,
             List<MultipartFile> newImages,
             List<Long> imageIdsToDelete
     ) throws IOException {
 
-        validateId(flatId, "flatId");
-
         if (dto == null) {
             throw fieldError("data", "Flat request body is required.");
         }
 
-        EntityFlats flat = getFlat(flatId);
+        EntityFlats flat = getFlat(dto.getFlatId());
 
         Long landlordId = flat.getLandlord() == null ? null
                         : flat.getLandlord().getId();
@@ -130,48 +127,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
             throw new AccessDeniedException("Flat does not have a valid landlord.");
         }
 
-        Long oldHomeId = homeIdOf(flat);
-
-
-        validateRoomCountChange(flat, dto.getNumberOfRooms());
-
-
-        Long targetBuildingId;
-        Long targetHomeId;
-
-        boolean parentProvided = dto.getBuildingId() != null || dto.getHomeId() != null;
-
-        if (parentProvided) {
-
-            validateParent(dto.getBuildingId(), dto.getHomeId());
-
-            targetBuildingId = dto.getBuildingId();
-
-            targetHomeId = dto.getHomeId();
-
-        } else {
-
-            targetBuildingId = flat.getBuilding() == null ? null
-                            : flat.getBuilding().getId();
-
-            targetHomeId = flat.getHome() == null ? null
-                            : flat.getHome().getId();
-
-            validateParent(targetBuildingId, targetHomeId);
-        }
-
-
-
         applyUpdateFields(flat, dto);
-
-
-
-        assignParent(
-                flat,
-                targetBuildingId,
-                targetHomeId,
-                landlordId
-        );
 
 
         EntityFlats savedFlat = flatsRepository.saveAndFlush(flat);
@@ -183,10 +139,6 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
                 imageIdsToDelete,
                 newImages
         );
-
-
-        refreshAffectedHomes(oldHomeId, homeIdOf(savedFlat));
-
 
         return toDetailsDTO(savedFlat);
     }
@@ -284,7 +236,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
     @Override
     @Transactional
-    public void deleteFlat(Long flatId) {
+    public void  deleteFlat(Long flatId) {
 
         validateId(flatId, "flatId");
 
@@ -339,36 +291,18 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     }
 
 
-    private void assignParent(
-            EntityFlats flat,
-            Long buildingId,
-            Long homeId,
-            Long landlordId
-    ) {
+    private void assignParent(EntityFlats flat, Long buildingId, Long homeId, Long landlordId) {
 
-        String flatNumber = cleanRequired(flat.getFlatNumber(), "Flat number is required.");
 
         if (buildingId != null) {
 
             EntityBuildings building = getBuilding(buildingId);
 
-            validateOwnership(
-                    building.getLandlord(),
-                    landlordId,
-                    "building"
-            );
+            validateOwnership(building.getLandlord(), landlordId, "building");
 
-            validateParentAcceptsFlats(
-                    building.getStatus(),
-                    "building"
-            );
+            validateParentAcceptsFlats(building.getStatus(), "building");
 
-            validateFlatNumberUnique(
-                    buildingId,
-                    null,
-                    flatNumber,
-                    flat.getId()
-            );
+            validateFlatNumberUnique(buildingId, null, flat.getFlatNumber(), flat.getId());
 
             flat.setBuilding(building);
             flat.setHome(null);
@@ -377,43 +311,25 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
             EntityHomes home = getHomeForUpdate(homeId);
 
-            validateOwnership(
-                    home.getLandlord(),
-                    landlordId,
-                    "home"
-            );
+            validateOwnership(home.getLandlord(), landlordId, "home");
 
-            validateParentAcceptsFlats(
-                    home.getStatus(),
-                    "home"
-            );
+            validateParentAcceptsFlats(home.getStatus(), "home");
 
-            validateFlatNumberUnique(
-                    null,
-                    homeId,
-                    flatNumber,
-                    flat.getId()
-            );
+            validateFlatNumberUnique(null, homeId, flat.getFlatNumber(), flat.getId());
 
             flat.setHome(home);
             flat.setBuilding(null);
         }
 
-        flat.setFlatNumber(flatNumber);
+
     }
 
 
-    private void validateFlatNumberUnique(
-            Long buildingId,
-            Long homeId,
-            String flatNumber,
-            Long currentFlatId
-    ) {
+    private void validateFlatNumberUnique(Long buildingId, Long homeId, String flatNumber, Long currentFlatId) {
 
         String cleaned = cleanRequired(flatNumber, "Flat number is required.");
 
-        boolean exists =
-                buildingId != null ? flatsRepository.existsByBuildingIdAndFlatNumberIgnoreCaseAndDeletedFalse(buildingId, cleaned)
+        boolean exists = buildingId != null ? flatsRepository.existsByBuildingIdAndFlatNumberIgnoreCaseAndDeletedFalse(buildingId, cleaned)
                              : flatsRepository.existsByHomeIdAndFlatNumberIgnoreCaseAndDeletedFalse(homeId, cleaned);
 
 
@@ -421,32 +337,18 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
             return;
         }
 
-
-        /*
-         * CREATE:
-         *
-         * currentFlatId == null
-         *
-         * Therefore any existing value is a duplicate.
-         */
-        if (currentFlatId == null) {
-
-            throw duplicateFlatNumberException(
-                    buildingId
-            );
-        }
+//        if (currentFlatId == null) {
+//
+//            throw duplicateFlatNumberException(
+//                    buildingId
+//            );
+//        }
 
 
-        EntityFlats current =
-                flatsRepository.findDetailsById(
-                        currentFlatId
-                );
+        EntityFlats current = flatsRepository.findDetailsById(currentFlatId);
 
 
-        if (current != null
-                && cleaned.equalsIgnoreCase(
-                current.getFlatNumber()
-        )) {
+        if (current != null && cleaned.equalsIgnoreCase(current.getFlatNumber())) {
 
             if (buildingId != null
                     && current.getBuilding() != null
@@ -488,51 +390,6 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         );
     }
 
-
-    // =========================================================
-    // ROOM CAPACITY
-    // =========================================================
-
-    /**
-     * Prevent changing:
-     *
-     * numberOfRooms = 5
-     *
-     * to:
-     *
-     * numberOfRooms = 2
-     *
-     * when 3 active Room entities already exist.
-     */
-    private void validateRoomCountChange(
-            EntityFlats flat,
-            Integer newCount
-    ) {
-
-        if (newCount == null || newCount <= 0) {
-
-            throw new BusinessConflictException(
-                    "Flat must have at least one declared room."
-            );
-        }
-
-        long assigned =
-                roomRepository.countActiveRoomsByFlatId(
-                        flat.getId(),
-                        null
-                );
-
-        if (newCount < assigned) {
-
-            throw new BusinessConflictException(
-                    "Flat room count cannot be reduced to "
-                            + newCount
-                            + " because "
-                            + assigned
-                            + " active Room(s) are already assigned."
-            );
-        }
-    }
 
 
     /**
@@ -612,10 +469,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
             return;
         }
 
-        EntityFlats flat =
-                flatsRepository
-                        .findByIdForUpdate(flatId)
-                        .orElse(null);
+        EntityFlats flat = flatsRepository.findByIdForUpdate(flatId).orElse(null);
 
         if (flat == null || flat.isDeleted()) {
             return;
@@ -640,11 +494,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
         }
 
 
-        UnitStatusCountsProjection counts =
-                roomRepository
-                        .getActiveRoomStatusCountsByFlatId(
-                                flatId
-                        );
+        UnitStatusCountsProjection counts = roomRepository.getActiveRoomStatusCountsByFlatId(flatId);
 
 
         long total =
@@ -881,84 +731,32 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     // =========================================================
     // UPDATE FIELDS
     // =========================================================
+    private void applyUpdateFields(EntityFlats flat, FlatUpdateRequestDTO dto) {
 
-    /**
-     * Current Flat update behaves like a full update/PUT:
-     * required values are replaced every time.
-     */
-    private void applyUpdateFields(
-            EntityFlats flat,
-            FlatUpdateRequestDTO dto
-    ) {
+        if (flat.getBuilding()!=null){validateFlatNumberUnique(flat.getBuilding().getId(), null, dto.getFlatNumber(), flat.getId());}
 
-        flat.setFlatNumber(
-                cleanRequired(
-                        dto.getFlatNumber(),
-                        "Flat number is required."
-                )
-        );
+        if (flat.getHome()!=null){validateFlatNumberUnique(null, flat.getHome().getId(), dto.getFlatNumber(), flat.getId());}
 
-        flat.setNumberOfRooms(
-                dto.getNumberOfRooms()
-        );
 
-        flat.setNumberOfBathrooms(
-                cleanRequired(
-                        dto.getNumberOfBathrooms(),
-                        "Number of bathrooms is required."
-                )
-        );
+        flat.setFlatNumber(cleanRequired(dto.getFlatNumber(), "Flat number is required."));
 
-        flat.setHasLivingRoom(
-                Boolean.TRUE.equals(
-                        dto.getHasLivingRoom()
-                )
-        );
+        flat.setHasAC(dto.isHasAC());
 
-        flat.setHasAC(
-                dto.isHasAC()
-        );
+        flat.setHasWIFI(dto.isHasWIFI());
 
-        flat.setHasWIFI(
-                dto.isHasWIFI()
-        );
+        flat.setFurnished(dto.isFurnished());
 
-        flat.setFurnished(
-                dto.isFurnished()
-        );
+        flat.setStatus(resolveUnitStatus(dto.getStatusCode()));
 
-        flat.setStatus(
-                resolveUnitStatus(
-                        dto.getStatusCode()
-                )
-        );
+        flat.setDescription(clean(dto.getDescription()));
 
-        flat.setFloorNumber(
-                cleanRequired(
-                        dto.getFloorNumber(),
-                        "Floor number is required."
-                )
-        );
+        flat.setTenantType(clean(dto.getTenantType()));
 
-        flat.setDescription(
-                clean(dto.getDescription())
-        );
+        flat.setRentalType(clean(dto.getRentTimeType()));
 
-        flat.setTenantType(
-                clean(dto.getTenantType())
-        );
+        flat.setPrice(dto.getPrice());
 
-        flat.setRentalType(
-                clean(dto.getRentTimeType())
-        );
-
-        flat.setPrice(
-                dto.getPrice()
-        );
-
-        flat.setLandlordMobileNumber(
-                clean(dto.getMobileNumber())
-        );
+        flat.setLandlordMobileNumber(clean(dto.getMobileNumber()));
     }
 
 
@@ -966,33 +764,17 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     // STATUS
     // =========================================================
 
-    private EntityUnitStatus resolveUnitStatus(
-            String statusCode
-    ) {
+    private EntityUnitStatus resolveUnitStatus(String statusCode) {
 
-        String cleaned =
-                clean(statusCode);
+        String cleaned = clean(statusCode);
 
         if (cleaned == null) {
 
-            /*
-             * Keep this only if Flat status is optional on create/update.
-             *
-             * If DTO uses @NotBlank(statusCode), you can instead remove
-             * this default behavior.
-             */
-            return unitStatusService
-                    .getDefaultStatus(
-                            StatusDomain.FLAT
-                    );
+            return unitStatusService.getDefaultStatus(StatusDomain.FLAT);
         }
 
 
-        return unitStatusService
-                .getRequiredSetupStatus(
-                        StatusDomain.FLAT,
-                        cleaned.toUpperCase(Locale.ROOT)
-                );
+        return unitStatusService.getRequiredStatus(StatusDomain.FLAT,cleaned, StatusLevel.U);
     }
 
 
@@ -1012,17 +794,11 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
 
     private EntityFlats getFlat(Long flatId) {
 
-        EntityFlats flat =
-                flatsRepository.findDetailsById(
-                        flatId
-                );
+        EntityFlats flat = flatsRepository.findDetailsById(flatId);
 
         if (flat == null) {
 
-            throw new EntityNotFoundException(
-                    "Flat not found with id: "
-                            + flatId
-            );
+            throw new EntityNotFoundException("Flat not found with id: " + flatId);
         }
 
         return flat;
@@ -1093,22 +869,13 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
             Long newHomeId
     ) {
 
-        Set<Long> homeIds =
-                new LinkedHashSet<>();
+        Set<Long> homeIds = new LinkedHashSet<>();
 
-        addValidId(
-                homeIds,
-                oldHomeId
-        );
+        addValidId(homeIds, oldHomeId);
 
-        addValidId(
-                homeIds,
-                newHomeId
-        );
+        addValidId(homeIds, newHomeId);
 
-        homeIds.forEach(
-                homeService::refreshHomeState
-        );
+        homeIds.forEach(homeService::refreshHomeState);
     }
 
 
@@ -1135,8 +902,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
             List<MultipartFile> pictures
     ) throws IOException {
 
-        if (pictures == null
-                || pictures.isEmpty()) {
+        if (pictures == null || pictures.isEmpty()) {
 
             return;
         }
@@ -1247,14 +1013,21 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
                         : null;
 
 
-        List<String> imageUrls =
+        List<PropertyMediaDTO> imageUrls =
                 propertyMediaService
-                        .getImages(
-                                PropertyType.FLAT,
-                                flat.getId()
-                        )
+                        .getImages(PropertyType.FLAT, flat.getId())
                         .stream()
-                        .map(PropertyMediaDTO::getFileUrl)
+                        .map(image ->
+                                PropertyMediaDTO.builder()
+                                        .id(image.getId())
+                                        .fileUrl(image.getFileUrl())
+                                        .originalFileName(image.getOriginalFileName())
+                                        .contentType(image.getContentType())
+                                        .sizeBytes(image.getSizeBytes())
+                                        .mainImage(image.isMainImage())
+                                        .sortOrder(image.getSortOrder())
+                                        .build()
+                        )
                         .toList();
 
 
@@ -1523,13 +1296,9 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     // COMMON UTILITIES
     // =========================================================
 
-    private Long homeIdOf(
-            EntityFlats flat
-    ) {
+    private Long homeIdOf(EntityFlats flat) {
 
-        return flat == null
-                || flat.getHome() == null
-                ? null
+        return flat == null || flat.getHome() == null ? null
                 : flat.getHome().getId();
     }
 
@@ -1614,10 +1383,7 @@ public class FlatsServicesImpl implements FlatsServicesInterface {
     }
 
 
-    private void addValidId(
-            Set<Long> ids,
-            Long id
-    ) {
+    private void addValidId(Set<Long> ids, Long id) {
 
         if (id != null && id > 0) {
             ids.add(id);

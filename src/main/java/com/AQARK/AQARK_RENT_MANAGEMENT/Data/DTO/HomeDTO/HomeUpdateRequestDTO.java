@@ -13,8 +13,9 @@ import java.math.BigDecimal;
 @Builder
 public class HomeUpdateRequestDTO {
 
-    @NotNull(message = "Home ID is required.")
-    @Positive(message = "Home ID must be greater than zero.")
+
+    @NotNull(message = "Home id is required.")
+    @Positive(message = "Home id must be greater than zero.")
     private Long id;
 
     private HomeType homeType;
@@ -40,23 +41,6 @@ public class HomeUpdateRequestDTO {
 
     @Size(max = 2000, message = "Description cannot exceed 2000 characters.")
     private String description;
-
-
-    private Long regionId;
-
-
-    private Long wilayaId;
-
-
-    private Long areaId;
-
-    @DecimalMin(value = "-90.0", message = "Latitude must be between -90 and 90.")
-    @DecimalMax(value = "90.0", message = "Latitude must be between -90 and 90.")
-    private Double latitude;
-
-    @DecimalMin(value = "-180.0", message = "Longitude must be between -180 and 180.")
-    @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180.")
-    private Double longitude;
 
     @Size(max = 100, message = "Tenant type cannot exceed 100 characters.")
     private String tenantType;

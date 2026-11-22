@@ -55,9 +55,7 @@ public class UserController {
 //    }
 
     @PostMapping("/registerWithSAS")
-    public ResponseEntity<Map<String, Object>> registerWithSAS(
-            @Valid @RequestBody RegistrationUserDTO request
-    ) {
+    public ResponseEntity<Map<String, Object>> registerWithSAS(@Valid @RequestBody RegistrationUserDTO request) {
         log.info("Registering user with SAS, email= "+ request.getEmail());
 
         String result = userServices.createUserWithSAS(request);

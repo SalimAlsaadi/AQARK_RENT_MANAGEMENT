@@ -44,11 +44,8 @@ public class PropertyMediaService {
 
         validateOwner(ownerType, ownerId);
 
-        List<PropertyMedia> existingImages =
-                propertyMediaRepository.findByOwnerTypeAndOwnerIdAndDeletedFalseOrderBySortOrderAsc(
-                        ownerType,
-                        ownerId
-                );
+        List<PropertyMedia> existingImages = propertyMediaRepository
+                                                     .findByOwnerTypeAndOwnerIdAndDeletedFalseOrderBySortOrderAsc(ownerType, ownerId);
 
         int nextOrder = existingImages.size() + 1;
         boolean hasMainImage = existingImages.stream().anyMatch(PropertyMedia::isMainImage);

@@ -2,6 +2,7 @@ package com.AQARK.AQARK_RENT_MANAGEMENT.Controller;
 
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.HomeDTO.*;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Data.DTO.RoomDTO.RoomDetailsDTO;
+import com.AQARK.AQARK_RENT_MANAGEMENT.Exceptions.ApiResponse;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.HomeServiceInterface;
 import com.AQARK.AQARK_RENT_MANAGEMENT.Services.Interface.RoomsServicesInterface;
 import jakarta.validation.Valid;
@@ -32,7 +33,7 @@ public class HomesController {
     private final OAuth2AuthorizedClientService authorizedClientService;
     private final JwtDecoder jwtDecoder;
 
-    @PutMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping("/updateHome")
     public ResponseEntity<HomeDetailsDTO> updateHome(@Valid @RequestPart("homeData") HomeUpdateRequestDTO dto,
                                                      @RequestPart(value = "newImages", required = false) List<MultipartFile> newImages,
                                                      @RequestPart(value = "imageIdsToDelete", required = false) List<Long> imageIdsToDelete,
@@ -78,14 +79,14 @@ public class HomesController {
         return ResponseEntity.ok(homeService.getAllHomes());
     }
 
-    @DeleteMapping("/{homeId}")
-    public ResponseEntity<Void> deleteHome(@PathVariable Long homeId, Authentication authentication) {
+    @PostMapping("/deleteHome")
+    public ResponseEntity<?> deleteHome(@RequestBody HomeIdDTO home, Authentication authentication) {
 
         Long landlordId = extractLandlordId(authentication);
 
-        homeService.deleteHome(homeId, landlordId);
+        homeService.deleteHome(home.getHomeId(), landlordId);
 
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(ApiResponse.success("Home deleted successfully ", null));
     }
 
     private Long extractLandlordId(Authentication authentication) {

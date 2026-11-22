@@ -34,7 +34,8 @@ public class PropertyCommonController {
     private final JwtDecoder jwtDecoder;
 
     @PostMapping(value = "/createProperties", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> createProperty(@RequestPart("propertyType") String propertyType,
+    public ResponseEntity<?> createProperty(
+                                            @RequestPart("propertyType") String propertyType,
                                             @RequestPart("data") String data,
                                             @RequestPart(value = "pictures", required = false) List<MultipartFile> pictures,
                                             Authentication authentication) throws IOException {

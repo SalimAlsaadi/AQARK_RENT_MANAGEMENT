@@ -10,7 +10,7 @@ public interface FlatsServicesInterface {
 
     FlatDetailsDTO createFlat(FlatSaveRequestDTO dto, List<MultipartFile> pictures, Long landlordId) throws IOException;
 
-    FlatDetailsDTO updateFlat(Long flatId, FlatUpdateRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete) throws IOException;
+    FlatDetailsDTO updateFlat(FlatUpdateRequestDTO dto, List<MultipartFile> newImages, List<Long> imageIdsToDelete) throws IOException;
 
     FlatDetailsDTO getFlatById(Long flatId);
 
